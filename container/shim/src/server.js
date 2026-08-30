@@ -9,6 +9,21 @@ const session = new Session()
 let ready = false
 let readyError = null
 
+/**
+ * Human takeover lease.
+ *
+ * The VNC session and the agent drive the same X server through the same XTEST
+ * path, so without this they fight over the cursor: the human clicks, the agent
+ * clicks somewhere else 200ms later, and neither can tell what happened. While a
+ * lease is held the shim refuses to act, so control is unambiguous.
+ */
+let lease = null   // { holder, expires_at }
+
+const leaseHeld = () => {
+  if (lease && Date.now() >= lease.expires_at) lease = null
+  return lease !== null
+}
+
 session.connect()
   .then(() => { ready = true; console.log('[shim] attached to Chrome over CDP') })
   .catch((e) => { readyError = e.message; console.error('[shim] attach failed:', e.message) })
@@ -56,8 +71,32 @@ const server = createServer(async (req, res) => {
     return json(res, 200, { ok: true, allowed_domains: session.allowedDomains })
   }
 
+  if (req.method === 'POST' && url.pathname === '/takeover') {
+    const body = (await readBody(req)) ?? {}
+    const ttl = Math.min(Number(body.ttl_s ?? 900), 3600)
+    lease = { holder: body.holder ?? 'human', expires_at: Date.now() + ttl * 1000 }
+    return json(res, 200, { ok: true, ...lease, ttl_s: ttl })
+  }
+
+  if (req.method === 'DELETE' && url.pathname === '/takeover') {
+    lease = null
+    return json(res, 200, { ok: true, released: true })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/takeover') {
+    return json(res, 200, { ok: true, held: leaseHeld(), lease })
+  }
+
   if (req.method === 'POST' && url.pathname === '/act') {
     if (!ready) return json(res, 503, { ok: false, error: 'not_ready', message: readyError ?? 'attaching to Chrome' })
+    if (leaseHeld()) {
+      return json(res, 423, {
+        ok: false,
+        error: 'human_has_control',
+        message: `${lease.holder} has taken over this computer until ${new Date(lease.expires_at).toISOString()}`,
+        recovery: 'wait',
+      })
+    }
     const body = await readBody(req)
     if (!body) return json(res, 400, { ok: false, error: 'bad_json' })
     const { action, ...args } = body

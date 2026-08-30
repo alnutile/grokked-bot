@@ -39,6 +39,20 @@ container/act.sh run_bash command='python3 -c "print(1+1)"'
 Watch it work, or take the mouse, at `http://127.0.0.1:16080/vnc.html?autoconnect=1&resize=scale`
 (password: `docker exec bot-alpha cat /data/profile/.vncpasswd.txt`).
 
+**Takeover.** Watching is `view_only=1`; taking over flips that *and* claims a lease:
+
+```bash
+curl -X POST   :18088/takeover -d '{"holder":"Alfred","ttl_s":900}'   # you have the mouse
+curl -X DELETE :18088/takeover                                        # give it back
+```
+
+While the lease is held every `/act` returns `423 human_has_control`. The lock is
+one-directional by design: it stops the agent, never you. Without it both drive the same
+X server through the same XTEST path and fight over the cursor, which is miserable to
+debug. On release the agent resumes **on whatever page you left it on** — same browser,
+same cookies, same session. That is what makes the sign-in handoff work: log in by hand
+once, and the bot continues from there.
+
 It is **not headless**: Xvfb + openbox + real Google Chrome on `:1` at 1280x800, with
 x11vnc for watch-and-takeover. The agent gets both halves of the machine —
 
