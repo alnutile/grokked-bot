@@ -1,0 +1,26 @@
+[Unit]
+Description=Grokked Bot daemon
+Documentation=file:///home/alfrednutile/Projects/grokked-bot/README.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=8
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/grokked/env
+Environment=NODE_ENV=production
+# Dev: run straight from the repo (Node 24 strips types natively).
+# Prod: swap for a bundled  node %h/.local/share/grokked/app/grokked.mjs
+ExecStart=/home/alfrednutile/.nvm/versions/node/v24.19.0/bin/node /home/alfrednutile/Projects/grokked-bot/packages/daemon/src/index.ts
+WorkingDirectory=/home/alfrednutile/Projects/grokked-bot
+Restart=always
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=30
+MemoryMax=2G
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,19 @@
+{
+  "name": "@grokked/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@grokked/protocol": "workspace:*",
+    "@hono/node-server": "^1",
+    "hono": "^4",
+    "pino": "^9",
+    "ws": "^8",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/ws": "^8"
+  }
+}

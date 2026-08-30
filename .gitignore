@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.tsbuildinfo
+apps/desktop/local-deps/
+apps/desktop/src-tauri/target/
+.env
