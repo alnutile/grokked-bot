@@ -19,7 +19,34 @@ base-URL change rather than a rewrite.
 ## Status
 
 **M0 complete** — daemon, schema, HTTP + WS with durable event replay, systemd unit.
-See `docs/PLAN.md` for the full milestone list.
+**M2 complete** — the bot's computer: a real X desktop with branded Chrome, driven over
+CDP by ref, plus a full shell. Verified end to end by hand against `fec.gov/data`
+(no model in the loop): navigate, click by ref, fill the date filter, submit, read the
+table, write JSON, then post-process it with Python inside the container.
+
+Next: **M1** chat + Tauri shell, then **M3** wiring the agent loop to these tools.
+See `docs/PLAN.md`.
+
+### The bot's computer
+
+```bash
+container/run.sh bot-alpha            # start it
+container/act.sh navigate url=https://example.com
+container/act.sh snapshot
+container/act.sh run_bash command='python3 -c "print(1+1)"'
+```
+
+Watch it work, or take the mouse, at `http://127.0.0.1:16080/vnc.html?autoconnect=1&resize=scale`
+(password: `docker exec bot-alpha cat /data/profile/.vncpasswd.txt`).
+
+It is **not headless**: Xvfb + openbox + real Google Chrome on `:1` at 1280x800, with
+x11vnc for watch-and-takeover. The agent gets both halves of the machine —
+
+| Browser (by ref, over CDP) | The rest of Linux |
+|---|---|
+| `navigate` `snapshot` `click` `type` `select` | `run_bash` |
+| `find` `read_text` `scroll` `wait_for` | `read_file` `write_file` `list_files` |
+| `screenshot` `upload_file` `desktop_action` | |
 
 ## Setup
 

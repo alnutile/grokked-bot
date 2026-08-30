@@ -393,11 +393,33 @@ when a task needs it.
 | **M0** | Rootless Docker + linger. pnpm workspace, `protocol` + `daemon`. Hono :8787, bearer auth, `/v1/health`. SQLite WAL + migrations. WS with `events` table and **`since=` replay**. systemd unit. | Reboot the machine; daemon still serves `/v1/health` with nobody logged in |
 | **M1** | Bots/threads/messages. OpenRouter SSE streaming. Tauri: thread list, composer, connection banner, daemon auto-start. **No tools.** | Chat, close the window, reopen, history intact |
 | **M2** | Tool registry (Zod→JSON Schema). Full loop: `finish`/`give_up`/`ask_user`/`sleep`. Two-phase dispatch with idem keys + in-doubt protocol. Leases, boot reclaim, crash-loop quarantine. Budget preflight. Repetition detector. First tools: **`api.open.fec.gov`** (read-only, safe). | `kill -9` mid-run and it resumes correctly; a looping prompt gets caught |
-| **M3** | Container image + shim. CDP action layer with generation-scoped refs. `wait_for_condition` first. noVNC watch + takeover lease. Domain allowlist in the shim. **Public sites only, read-only.** | Bot pulls 2025 FEC data via the browser when the API can't answer, and you watch it happen |
+| **M3 (was)** | Container image + shim. CDP action layer with generation-scoped refs. `wait_for_condition` first. noVNC watch + takeover lease. Domain allowlist in the shim. **Public sites only, read-only.** | Bot pulls 2025 FEC data via the browser when the API can't answer, and you watch it happen |
 | **M4** | Approvals + `tool_policies` + previews + tray badge + ntfy. **Required before any authenticated site or any mutating action.** | Run pauses, phone buzzes, you edit an arg and approve, run completes with your edit |
 | **M5** | Facts/entities/notes, FTS5+bm25+recency, pinning, `remember`, post-run extraction, context assembly with per-section caps. Editable memory panel. | State a preference once; a run three days later respects it and you can point at the row |
 | **M6** | Routine distillation from a successful trace, `procedure_md` injection, guided replay, corrections with live injection, version diff UI. | "Save that as a routine," edit the checklist, schedule it, it runs right next week |
 | **M7** | Prompt caching verified via `cached_tokens`, worker/planner escalation telemetry, budgets, usage dashboard, retrieval-hit logging. | You can see cost per run broken down by model and role |
+
+### Revision (after M0): the browser is the primary path, not a fallback
+
+The original phasing had the bot call `api.open.fec.gov` first and treat the browser as a
+fallback, with the container deferred to M3+. **That inverts the point of the product.** The
+capability being built is "it works the site the way you do"; a bot that quietly hits a JSON
+API demonstrates nothing that `open-data` doesn't already do, and it pushes the one genuinely
+hard, genuinely differentiating piece to the end of the schedule.
+
+So: the container and its CDP action layer move to **M2**, ahead of the agent loop, and the
+FEC API is dropped from the demo path entirely. The bot scrapes `fec.gov/data` through its
+own browser.
+
+This also happens to de-risk better. The shim is drivable by hand with `curl`, with no model
+in the loop, so the browser layer can be proven against the real site *before* any LLM
+non-determinism is added on top. When the loop later misbehaves, the action layer underneath
+it is already known-good.
+
+Revised order: **M1** chat → **M2** container + CDP shim (verified by hand) → **M3** durable
+agent loop wired to the browser tools → **M4** approvals → **M5** memory → **M6** routines →
+**M7** cost. Approvals remain a hard gate before any authenticated site or mutating action;
+`fec.gov` is public and read-only, so M2/M3 are safe ahead of it.
 
 **The FEC job is a good first target** precisely because `fec.gov/data` is a React SPA over a
 real public API: the bot should prefer `api.open.fec.gov` and fall back to the browser for
