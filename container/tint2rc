@@ -1,0 +1,16 @@
+# Minimal taskbar so a human taking over has a launcher, and so the desktop
+# reads as a real machine rather than a kiosk.
+panel_items = LTSC
+panel_monitor = all
+panel_position = bottom center horizontal
+panel_size = 100% 34
+panel_background_id = 1
+taskbar_mode = single_desktop
+task_maximum_size = 220 30
+launcher_item_app = /usr/share/applications/google-chrome.desktop
+launcher_item_app = /usr/share/applications/debian-xterm.desktop
+launcher_item_app = /usr/share/applications/pcmanfm.desktop
+launcher_icon_size = 24
+time1_format = %H:%M
+rounded = 0
+background_color = #1c1c1c 100

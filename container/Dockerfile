@@ -19,6 +19,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       xvfb x11vnc novnc websockify openbox xdotool \
+      tint2 xterm pcmanfm \
       x11-utils x11-xserver-utils dbus-x11 \
       supervisor tini ffmpeg \
       fonts-liberation fonts-dejavu-core fonts-noto-color-emoji fonts-noto-cjk \
@@ -35,7 +36,15 @@ COPY shim/package.json ./package.json
 RUN npm install --omit=dev && npm cache clean --force
 COPY shim/src ./src
 
+# Managed policy rather than --test-type: kills the "unsupported command-line
+# flag" infobar (which eats 40px the model has to look past), pre-denies
+# notification/geolocation prompts, and suppresses the save-password bubble and
+# the Save-As dialog -- all native surfaces the CDP path cannot see.
+RUN mkdir -p /etc/opt/chrome/policies/managed
+COPY policies/grokked.json /etc/opt/chrome/policies/managed/grokked.json
+
 COPY openbox/rc.xml /etc/xdg/openbox/rc.xml
+COPY tint2rc /etc/xdg/tint2/tint2rc
 COPY chrome-wrapper.sh /usr/local/bin/chrome-wrapper.sh
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY supervisord.conf /etc/supervisor/conf.d/grokked.conf

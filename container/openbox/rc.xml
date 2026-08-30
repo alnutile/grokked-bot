@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <openbox_config xmlns="http://openbox.org/3.4/rc">
-  <theme><titleLayout></titleLayout></theme>
   <desktops><number>1</number></desktops>
   <applications>
-    <application class="*">
+    <application class="Google-chrome">
       <decor>no</decor>
       <maximized>yes</maximized>
       <position force="yes"><x>0</x><y>0</y></position>

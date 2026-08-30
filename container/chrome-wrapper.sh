@@ -21,6 +21,7 @@ exec google-chrome \
   --lang=en-US \
   --use-gl=swiftshader \
   --no-sandbox \
+  --disable-infobars \
   --disable-background-timer-throttling \
   --disable-backgrounding-occluded-windows \
   --disable-renderer-backgrounding \
