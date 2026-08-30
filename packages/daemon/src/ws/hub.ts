@@ -41,7 +41,7 @@ export function attachWs(server: Server, bus: EventBus, token: string): WebSocke
     })
   })
 
-  wss.on('connection', (ws: WebSocket, _req, since: number) => {
+  wss.on('connection', (ws: WebSocket, _req: import('node:http').IncomingMessage, since: number) => {
     const conn: Conn = { ws, topics: new Set(), since, replayedTo: since, alive: true }
     conns.add(conn)
 

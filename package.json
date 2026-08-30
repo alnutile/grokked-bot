@@ -11,5 +11,10 @@
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
     "test": "node packages/daemon/test/ws-replay.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/ws": "^8.18.1",
+    "typescript": "^7.0.2"
   }
 }
