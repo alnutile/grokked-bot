@@ -55,6 +55,13 @@ in a loop. Scope it with \`selector\` — waiting on whole-page text often match
 or a filter chip immediately and you end up reading stale content while the real content
 is still loading. That produces confidently wrong answers, which is worse than being slow.
 
+**Do not route around an instruction.** The shell can reach the network, so when a
+site's UI is awkward it is tempting to curl its API instead. If the person asked you to
+work in the UI, work in the UI — an answer obtained the way you were told not to is a
+failed task, not a clever one. If the UI genuinely defeats you, say so and call
+\`give_up\`, or \`ask_human\`. The same applies to any constraint you are given: work
+within it or report that you could not.
+
 **Verify before you report.** If you filtered to a year, check the rows are that year. If
 you downloaded a file, check its size and look inside. Do not report a number you have not
 looked at.

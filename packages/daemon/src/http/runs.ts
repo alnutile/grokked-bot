@@ -98,8 +98,41 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     return c.json({ ok: true, resumed: id })
   })
 
-  app.get('/v1/bots/:id/computer', (c) =>
-    c.json({ vnc_url: (runtimeFor(c.req.param('id')) as LocalDockerRuntime).vncUrl() }))
+  app.get('/v1/bots/:id/computer', async (c) => {
+    const rt = runtimeFor(c.req.param('id')) as LocalDockerRuntime
+    return c.json({
+      vnc_url: rt.vncUrl(),
+      vnc_port: rt.vncPort,
+      vnc_password: await rt.vncPassword().catch(() => null),
+      human_in_control: await rt.isHumanInControl().catch(() => false),
+    })
+  })
+
+  // Proxied so the UI never talks to a container directly -- the same call will
+  // work unchanged once the daemon lives on a remote box.
+  app.post('/v1/bots/:id/takeover', async (c) => {
+    const rt = runtimeFor(c.req.param('id')) as LocalDockerRuntime
+    const body: { holder?: string; ttl_s?: number } =
+      await c.req.json<{ holder?: string; ttl_s?: number }>().catch(() => ({}))
+    const r = await fetch(`http://127.0.0.1:${rt.shimPort}/takeover`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ holder: body.holder ?? 'you', ttl_s: body.ttl_s ?? 900 }),
+    })
+    return c.json(await r.json())
+  })
+
+  app.delete('/v1/bots/:id/takeover', async (c) => {
+    const rt = runtimeFor(c.req.param('id')) as LocalDockerRuntime
+    const r = await fetch(`http://127.0.0.1:${rt.shimPort}/takeover`, { method: 'DELETE' })
+    return c.json(await r.json())
+  })
+
+  app.post('/v1/bots/:id/computer/start', async (c) => {
+    const rt = runtimeFor(c.req.param('id'))
+    await rt.ensureUp()
+    return c.json({ ok: true })
+  })
 }
 
 /** On boot, put runs orphaned by the previous instance back in the queue. */

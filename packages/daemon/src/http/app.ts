@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import type { Health } from '@grokked/protocol'
 import { INSTANCE_ID, VERSION } from '../config.ts'
 import { PROTOCOL_VERSION } from '@grokked/protocol'
@@ -22,7 +23,20 @@ function safeEq(a: string, b: string): boolean {
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono()
 
+  // The UI is served from http://localhost:<port> (tauri-plugin-localhost) while
+  // the daemon is on 127.0.0.1:8787 -- different origins, so every call is a CORS
+  // request. Must come BEFORE the bearer check: a preflight carries no
+  // Authorization header, so auth would 401 it and the browser would never send
+  // the real request.
+  app.use('/v1/*', cors({
+    origin: (o) => (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o) ? o : null),
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['authorization', 'content-type'],
+    maxAge: 600,
+  }))
+
   app.use('/v1/*', async (c, next) => {
+    if (c.req.method === 'OPTIONS') return next()
     // Webhook ingress authenticates per-trigger with HMAC instead of the bearer token.
     if (c.req.path.startsWith('/v1/hooks/')) return next()
 

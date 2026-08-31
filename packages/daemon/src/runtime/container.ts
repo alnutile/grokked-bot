@@ -118,6 +118,17 @@ export class LocalDockerRuntime implements BotRuntime {
     }
   }
 
+  /** Generated inside the container on first boot. Loopback-only, but the UI
+   *  still needs it to connect without prompting the human every time. */
+  async vncPassword(): Promise<string | null> {
+    try {
+      const { stdout } = await exec('docker', ['exec', this.name, 'cat', '/data/profile/.vncpasswd.txt'], { env })
+      return stdout.trim() || null
+    } catch {
+      return null
+    }
+  }
+
   vncUrl(): string {
     return `http://127.0.0.1:${this.vncPort}/vnc.html?autoconnect=1&resize=scale`
   }

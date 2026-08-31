@@ -178,6 +178,10 @@ export class Session {
 
   async find({ query, role }) {
     const page = this.page()
+    // find() matches against elements tagged by a snapshot, so calling it before
+    // any snapshot exists would always return not_found. Take one implicitly
+    // rather than making the model discover that by wasting a step.
+    if (this.gen === 0) await this.snapshot()
     const matches = await page.evaluate(
       ([q, r]) => {
         const needle = q.toLowerCase()
@@ -195,7 +199,35 @@ export class Session {
       [query, role ?? ''],
     )
     if (matches.length === 0) {
-      throw new Fail('not_found', `no element matching ${JSON.stringify(query)} in snapshot s${this.gen}`, 'snapshot')
+      // Widen to the untagged DOM before giving up: the snapshot caps at 120
+      // nodes, so the element may be real but simply not in it. Tag the hits so
+      // they are immediately actionable.
+      const widened = await page.evaluate(
+        ([q, r, gen]) => {
+          const needle = q.toLowerCase()
+          const out = []
+          let n = 100000
+          for (const el of document.querySelectorAll('a,button,input,select,textarea,[role],th,td,li,span,label')) {
+            const text = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim()
+            if (!text || text.length > 200) continue
+            const elRole = (el.getAttribute('role') || el.tagName).toLowerCase()
+            if (!text.toLowerCase().includes(needle)) continue
+            if (r && !elRole.includes(r.toLowerCase())) continue
+            const rect = el.getBoundingClientRect()
+            if (rect.width < 1 || rect.height < 1) continue
+            const ref = `s${gen}e${++n}`
+            el.setAttribute('data-gref', ref)
+            out.push({ ref, role: elRole, name: text.replace(/\s+/g, ' ').slice(0, 120) })
+            if (out.length >= 20) break
+          }
+          return out
+        },
+        [query, role ?? '', this.gen],
+      )
+      if (widened.length === 0) {
+        throw new Fail('not_found', `nothing matching ${JSON.stringify(query)} on this page`, 'read_text')
+      }
+      return this.envelope({ matches: widened, note: 'found outside the snapshot; refs are usable' })
     }
     return this.envelope({ matches })
   }
