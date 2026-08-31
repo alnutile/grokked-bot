@@ -23,6 +23,7 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
   const [run, setRun] = useState<Run | null>(null)
   const [goal, setGoal] = useState('')
   const [domains, setDomains] = useState('fec.gov')
+  const [budget, setBudget] = useState('')
   const [sending, setSending] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -68,7 +69,11 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
     setEntries((e) => [...e, { kind: 'goal', text }])
     setGoal('')
     try {
-      const r = await api.createRun(botId, text, domains.split(',').map((s) => s.trim()).filter(Boolean))
+      const r = await api.createRun(
+        botId, text,
+        domains.split(',').map((s) => s.trim()).filter(Boolean),
+        budget ? Number(budget) : undefined,
+      )
       setRun(r)
       subscribe([`run:${r.id}`, `bot:${botId}`])
     } catch (e) {
@@ -105,14 +110,40 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
         )}
         {entries.map((e, i) => <Bubble key={i} e={e} />)}
         {live && <div className="working"><span className="dot" />working…</div>}
+        {run?.state === 'paused_budget' && (
+          <div className="bubble capped">
+            <b>Paused at its spending cap</b>
+            <div className="dim">
+              ${Number(run.spend_usd).toFixed(4)} of ${Number(run.max_usd).toFixed(2)} for this run.
+              This is a runaway-loop guardrail, not your balance.
+            </div>
+            <div className="cap-actions">
+              {[1, 5, 20].map((n) => (
+                <button key={n} className="btn" onClick={async () => {
+                  await api.resume(run.id, n)
+                  setEntries((e) => [...e, { kind: 'say', text: `— continued with $${n} more —` }])
+                  void api.run(run.id).then(setRun)
+                }}>Continue +${n}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 
       <div className="composer">
-        <input
-          className="domains" value={domains} onChange={(ev) => setDomains(ev.target.value)}
-          placeholder="allowed domains (comma separated)" title="Sites this run may visit. Enforced in the container, not the prompt."
-        />
+        <div className="composer-opts">
+          <input
+            className="domains" value={domains} onChange={(ev) => setDomains(ev.target.value)}
+            placeholder="allowed domains (comma separated)"
+            title="Sites this run may visit. Enforced in the container, not the prompt."
+          />
+          <input
+            className="domains budget" value={budget} onChange={(ev) => setBudget(ev.target.value)}
+            placeholder="max $" inputMode="decimal"
+            title="Per-run spending cap. Guards against runaway loops; blank uses the daemon default."
+          />
+        </div>
         <div className="composer-row">
           <textarea
             value={goal} onChange={(ev) => setGoal(ev.target.value)}

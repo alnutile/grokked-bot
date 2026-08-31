@@ -52,7 +52,7 @@ export function loadConfig(): Config {
   const path = join(CONFIG_DIR, 'config.json')
   const base: Config = {
     models: DEFAULT_MODELS,
-    defaults: { max_steps: 40, max_usd: 1.0, max_wall_s: 3600, max_screenshots: 12 },
+    defaults: { max_steps: 40, max_usd: 10.0, max_wall_s: 3600, max_screenshots: 12 },
   }
   if (!existsSync(path)) {
     writeFileSync(path, JSON.stringify(base, null, 2) + '\n', { mode: 0o600 })

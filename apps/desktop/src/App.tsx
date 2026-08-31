@@ -11,6 +11,7 @@ export default function App() {
   const [conn, setConn] = useState<'up' | 'down'>('down')
   const [boot, setBoot] = useState<string | null>('connecting…')
   const [logs, setLogs] = useState<string | null>(null)
+  const [credit, setCredit] = useState<number | null>(null)
 
   useEffect(() => {
     void (async () => {
@@ -39,6 +40,14 @@ export default function App() {
   }, [boot])
 
   useEffect(() => { if (active) subscribe([`bot:${active}`]) }, [active])
+
+  useEffect(() => {
+    if (boot) return
+    const load = () => api.credits().then((c) => setCredit(c.remaining)).catch(() => {})
+    void load()
+    const t = setInterval(load, 60_000)
+    return () => clearInterval(t)
+  }, [boot])
 
   if (boot) {
     return (
@@ -86,6 +95,11 @@ export default function App() {
             setBots((x) => [...x, b]); setActive(b.id)
           }}
         >+ New bot</button>
+        {credit !== null && (
+          <div className={`credit ${credit < 5 ? 'credit-low' : ''}`} title="Remaining OpenRouter credit">
+            ${credit.toFixed(2)} left on OpenRouter
+          </div>
+        )}
         {conn === 'down' && <div className="offline">Daemon offline — your bots are not working.</div>}
       </aside>
 

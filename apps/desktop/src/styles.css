@@ -100,3 +100,14 @@ button { font: inherit; }
 .logs { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px;
         font-size: 11px; max-height: 320px; overflow: auto; width: min(820px, 92vw); color: var(--dim); }
 .empty-thread { display: grid; place-items: center; color: var(--dim); }
+
+.composer-opts { display: flex; gap: 7px; }
+.composer-opts .domains { flex: 1; }
+.budget { max-width: 84px; text-align: right; }
+.bubble.capped { align-self: flex-start; background: #2b2312; border: 1px solid #6b5416;
+                 max-width: 92%; display: flex; flex-direction: column; gap: 7px; }
+.bubble.capped .dim { color: #c9b072; font-size: 12px; }
+.cap-actions { display: flex; gap: 6px; margin-top: 2px; }
+.cap-actions .btn { padding: 5px 10px; font-size: 12px; }
+.credit { font-size: 11px; color: var(--dim); padding: 5px 7px; border-top: 1px solid var(--line); }
+.credit-low { color: var(--warn); }

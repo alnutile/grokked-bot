@@ -5,6 +5,7 @@ import type { EventBus } from '../events.ts'
 import { createRun, executeStep } from '../agent/loop.ts'
 import { LocalDockerRuntime, type BotRuntime } from '../runtime/container.ts'
 import { log } from '../log.ts'
+import { credits } from '../model/openrouter.ts'
 
 const runtimes = new Map<string, BotRuntime>()
 const runtimeFor = (botId: string): BotRuntime => {
@@ -86,16 +87,32 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     return c.json({ ok: true })
   })
 
-  /** Resume anything left mid-flight by a restart. The loop cannot tell the
-   *  difference between this and a normal step, which is the point. */
-  app.post('/v1/runs/:id/resume', (c) => {
+  /** What you can actually spend. The per-run cap is a loop guardrail; this is
+   *  the budget, and the UI shows it so the cap is never mistaken for it. */
+  app.get('/v1/credits', async (c) => c.json((await credits()) ?? { error: 'unavailable' }))
+
+  /** Resume anything left mid-flight by a restart, or continue a run that hit
+   *  its per-run cap. `add_usd` raises the ceiling for this run only -- the loop
+   *  cannot tell the difference between this and a normal step, which is the point. */
+  app.post('/v1/runs/:id/resume', async (c) => {
     const id = c.req.param('id')
-    const run = db.prepare('SELECT bot_id, state FROM runs WHERE id=?').get(id) as
-      { bot_id: string; state: string } | undefined
+    const run = db.prepare('SELECT bot_id, state, max_usd, spend_usd FROM runs WHERE id=?').get(id) as
+      { bot_id: string; state: string; max_usd: number; spend_usd: number } | undefined
     if (!run) return c.json({ error: 'not_found' }, 404)
-    db.prepare("UPDATE runs SET state='running' WHERE id=?").run(id)
+
+    const body: { add_usd?: number } = await c.req.json<{ add_usd?: number }>().catch(() => ({}))
+    const add = Number(body.add_usd ?? 0)
+    if (add > 0) {
+      db.prepare('UPDATE runs SET max_usd = max_usd + ? WHERE id=?').run(add, id)
+    } else if (run.spend_usd >= run.max_usd) {
+      return c.json({
+        error: 'still_over_cap',
+        message: `run has spent $${run.spend_usd.toFixed(4)} of $${run.max_usd.toFixed(2)}; pass add_usd to continue`,
+      }, 409)
+    }
+    db.prepare("UPDATE runs SET state='queued', state_reason=NULL WHERE id=?").run(id)
     drive(db, bus, run.bot_id, id)
-    return c.json({ ok: true, resumed: id })
+    return c.json({ ok: true, resumed: id, max_usd: run.max_usd + add })
   })
 
   app.get('/v1/bots/:id/computer', async (c) => {

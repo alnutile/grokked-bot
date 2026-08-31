@@ -43,10 +43,15 @@ export const api = {
     req<{ bot: Bot }>('/v1/bots', { method: 'POST', body: JSON.stringify({ name, persona_md }) }).then((r) => r.bot),
   runs: () => req<{ runs: Run[] }>('/v1/runs').then((r) => r.runs),
   run: (id: string) => req<{ run: Run }>(`/v1/runs/${id}`).then((r) => r.run),
-  createRun: (bot_id: string, goal: string, allowed_domains: string[], max_usd = 1.0) =>
+  credits: () => req<{ total_credits: number; total_usage: number; remaining: number }>('/v1/credits'),
+  resume: (id: string, add_usd?: number) =>
+    req<{ ok: boolean; max_usd: number }>(`/v1/runs/${id}/resume`, {
+      method: 'POST', body: JSON.stringify({ add_usd }),
+    }),
+  createRun: (bot_id: string, goal: string, allowed_domains: string[], max_usd?: number) =>
     req<{ run: Run }>('/v1/runs', {
       method: 'POST',
-      body: JSON.stringify({ bot_id, goal, allowed_domains, max_usd }),
+      body: JSON.stringify({ bot_id, goal, allowed_domains, ...(max_usd ? { max_usd } : {}) }),
     }).then((r) => r.run),
   cancel: (id: string) => req(`/v1/runs/${id}/cancel`, { method: 'POST' }),
   computer: (botId: string) =>

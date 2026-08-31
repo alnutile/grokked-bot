@@ -165,3 +165,27 @@ export async function validateModels(ids: string[]): Promise<void> {
     log.warn({ err: (e as Error).message }, 'could not validate model ids')
   }
 }
+
+export interface Credits {
+  total_credits: number
+  total_usage: number
+  remaining: number
+}
+
+/** The real spending constraint. A local per-run cap is a guardrail against
+ *  runaway loops, not a budget -- this is the budget. */
+export async function credits(): Promise<Credits | null> {
+  try {
+    const res = await fetch(`${OPENROUTER_URL}/credits`, {
+      headers: { authorization: `Bearer ${OPENROUTER_KEY}` },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return null
+    const d = ((await res.json()) as any).data ?? {}
+    const total = Number(d.total_credits ?? 0)
+    const used = Number(d.total_usage ?? 0)
+    return { total_credits: total, total_usage: used, remaining: total - used }
+  } catch {
+    return null
+  }
+}
