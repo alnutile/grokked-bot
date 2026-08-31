@@ -20,6 +20,55 @@ export const BLOB_DIR = join(DATA_DIR, 'blobs')
 export const TOKEN_PATH = join(CONFIG_DIR, 'token')
 export const DISCOVERY_PATH = join(RUNTIME_DIR, 'daemon.json')
 
+export const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY ?? ''
+export const OPENROUTER_URL = process.env.OPENROUTER_URL ?? 'https://openrouter.ai/api/v1'
+export const DOCKER_HOST_SOCK =
+  process.env.DOCKER_HOST ?? `unix:///run/user/${process.getuid?.() ?? 1000}/docker.sock`
+
+export interface ModelRoles {
+  planner: string
+  worker: string
+  vision: string
+  distiller: string
+  classifier: string
+}
+
+/** Never hard-code model ids in source: they churn. Validated against
+ *  GET /models on boot so a bad id is a loud warning, not a 3am 404. */
+export const DEFAULT_MODELS: ModelRoles = {
+  planner: 'anthropic/claude-opus-4.8',
+  worker: 'anthropic/claude-sonnet-5',
+  vision: 'anthropic/claude-sonnet-5',
+  distiller: 'google/gemini-2.5-flash-lite',
+  classifier: 'google/gemini-2.5-flash-lite',
+}
+
+export interface Config {
+  models: ModelRoles
+  defaults: { max_steps: number; max_usd: number; max_wall_s: number; max_screenshots: number }
+}
+
+export function loadConfig(): Config {
+  const path = join(CONFIG_DIR, 'config.json')
+  const base: Config = {
+    models: DEFAULT_MODELS,
+    defaults: { max_steps: 40, max_usd: 1.0, max_wall_s: 3600, max_screenshots: 12 },
+  }
+  if (!existsSync(path)) {
+    writeFileSync(path, JSON.stringify(base, null, 2) + '\n', { mode: 0o600 })
+    return base
+  }
+  try {
+    const user = JSON.parse(readFileSync(path, 'utf8')) as Partial<Config>
+    return {
+      models: { ...base.models, ...(user.models ?? {}) },
+      defaults: { ...base.defaults, ...(user.defaults ?? {}) },
+    }
+  } catch {
+    return base
+  }
+}
+
 export const HOST = process.env.GROKKED_HOST ?? '127.0.0.1'
 export const PORT = Number(process.env.GROKKED_PORT ?? 8787)
 

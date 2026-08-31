@@ -7,6 +7,9 @@ import {
 import { openDb } from './db/index.ts'
 import { EventBus } from './events.ts'
 import { createApp } from './http/app.ts'
+import { mountRuns, reclaimOrphanedRuns } from './http/runs.ts'
+import { loadConfig } from './config.ts'
+import { validateModels } from './model/openrouter.ts'
 import { log } from './log.ts'
 import { attachWs } from './ws/hub.ts'
 
@@ -17,6 +20,9 @@ const token = loadOrCreateToken()
 const db = openDb()
 const bus = new EventBus(db)
 const app = createApp({ db, bus, token, startedAt })
+mountRuns(app, db, bus)
+reclaimOrphanedRuns(db, bus)
+void validateModels(Object.values(loadConfig().models))
 
 const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
   log.info({ host: HOST, port: info.port, instance: INSTANCE_ID, db: DB_PATH }, 'grokked daemon listening')

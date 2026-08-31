@@ -24,8 +24,34 @@ CDP by ref, plus a full shell. Verified end to end by hand against `fec.gov/data
 (no model in the loop): navigate, click by ref, fill the date filter, submit, read the
 table, write JSON, then post-process it with Python inside the container.
 
-Next: **M1** chat + Tauri shell, then **M3** wiring the agent loop to these tools.
-See `docs/PLAN.md`.
+**M3 complete** — the harness. OpenRouter tool-calling loop, 15 tools, durable run
+state, budget caps, loop detection. Verified against the live FEC site: the agent drove
+the UI, wrote a JSON file, ran Python over it, and reported an honest caveated total that
+matched a hand-driven scrape exactly.
+
+Next: **M1** chat + Tauri shell, then **M4** approvals. See `docs/PLAN.md`.
+
+### Hand a bot a job
+
+```bash
+node packages/daemon/bin/task.ts "<goal>" [allowed-domain ...]     # CLI, streams progress
+
+curl -X POST localhost:8787/v1/runs -H "Authorization: Bearer $(cat ~/.config/grokked/token)" \
+  -d '{"bot_id":"bot-alpha","goal":"...","allowed_domains":["fec.gov"],"max_usd":0.50}'
+```
+
+The agent's 15 tools, and what the system prompt tells it about them:
+
+| | |
+|---|---|
+| Browser | `navigate` `snapshot` `click` `type` `find` `read_text` `scroll` `wait_for` `screenshot` |
+| The machine | `run_bash` `write_file` `desktop_action` |
+| Control | `finish` `give_up` `ask_human` |
+
+It is told it *has a computer*, not that it can call a browser API: use the shell when a
+shell is easier, read pages by ref rather than by screenshot, wait for the thing you
+actually want, verify before reporting, and call `ask_human` at a login wall so a person
+can sign in by hand and hand control back.
 
 ### The bot's computer
 
