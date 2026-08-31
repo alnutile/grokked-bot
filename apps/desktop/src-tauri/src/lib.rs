@@ -61,7 +61,22 @@ pub fn run() {
             daemon_logs
         ])
         .setup(move |app| {
-            let url = format!("http://localhost:{port}").parse().unwrap();
+            // tauri-plugin-localhost's server does not map the bare "/" -- it
+            // answers 500 there while serving /index.html and /assets/* fine,
+            // which renders as a blank white window with no error anywhere.
+            // Ask for index.html explicitly.
+            //
+            // In dev, point at the vite server instead so HMR works. That is
+            // already a plain http://localhost origin, so the mixed-content rule
+            // that forces the localhost plugin in release does not apply.
+            let url = if cfg!(debug_assertions) {
+                option_env!("TAURI_DEV_URL")
+                    .unwrap_or("http://localhost:1430")
+                    .parse()
+                    .unwrap()
+            } else {
+                format!("http://localhost:{port}/index.html").parse().unwrap()
+            };
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                 .title("Grokked Bot")
                 .inner_size(1500.0, 950.0)
