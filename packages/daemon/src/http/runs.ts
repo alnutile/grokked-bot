@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
 import type { Db } from '../db/index.ts'
 import type { EventBus } from '../events.ts'
-import { createRun, executeStep } from '../agent/loop.ts'
+import { addHumanReply, createRun, createThread, executeStep } from '../agent/loop.ts'
+import { buildTranscript } from '../agent/transcript.ts'
 import { LocalDockerRuntime, type BotRuntime } from '../runtime/container.ts'
 import { log } from '../log.ts'
 import { credits } from '../model/openrouter.ts'
@@ -38,6 +39,23 @@ function drive(db: Db, bus: EventBus, botId: string, runId: string): void {
 }
 
 export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
+  const currentThread = (botId: string) =>
+    (db.prepare(
+      `SELECT id FROM threads WHERE bot_id = ? AND kind = 'chat' ORDER BY created_at DESC LIMIT 1`,
+    ).get(botId) as { id: string } | undefined)?.id
+
+  const latestRun = (threadId: string) =>
+    db.prepare('SELECT * FROM runs WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1')
+      .get(threadId) as (RunState & Record<string, unknown>) | undefined
+
+  const requeue = (runId: string, botId: string) => {
+    db.prepare("UPDATE runs SET state='queued', state_reason=NULL WHERE id=?").run(runId)
+    bus.emit({ topic: `run:${runId}`, type: 'run.state', run_id: runId, data: { run_id: runId, state: 'queued' } })
+    drive(db, bus, botId, runId)
+  }
+
+  const transcript = (threadId: string) => buildTranscript(db, threadId)
+
   app.get('/v1/bots', (c) =>
     c.json({ bots: db.prepare('SELECT * FROM bots ORDER BY created_at').all() }))
 
@@ -51,6 +69,10 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     return c.json({ bot: db.prepare('SELECT * FROM bots WHERE id=?').get(id) }, 201)
   })
 
+  /** A message to a bot. It continues the bot's current conversation: if the
+   *  bot is waiting on the human, this is the answer and that run carries on;
+   *  otherwise it starts a new run in the same thread, which sees the earlier
+   *  exchanges. */
   app.post('/v1/runs', async (c) => {
     const body = await c.req.json<{
       bot_id: string; goal: string; allowed_domains?: string[]
@@ -59,11 +81,43 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     if (!db.prepare('SELECT 1 FROM bots WHERE id=?').get(body.bot_id)) {
       return c.json({ error: 'no_such_bot', message: `no bot ${body.bot_id}` }, 404)
     }
-    const runId = createRun(db, body)
+    const threadId = currentThread(body.bot_id) ?? createThread(db, body.bot_id, body.goal)
+    const last = latestRun(threadId)
+    if (last && ['queued', 'running'].includes(last.state)) {
+      return c.json({ error: 'busy', message: 'this bot is still working on your last message — stop it first' }, 409)
+    }
+    if (last && waitingOnHuman(last)) {
+      addHumanReply(db, last.id, body.goal)
+      if (body.allowed_domains) {
+        db.prepare('UPDATE runs SET allowed_domains_json = ? WHERE id = ?')
+          .run(JSON.stringify(body.allowed_domains), last.id)
+      }
+      requeue(last.id, body.bot_id)
+      return c.json({ run: db.prepare('SELECT * FROM runs WHERE id=?').get(last.id), resumed: true }, 200)
+    }
+    const runId = createRun(db, { ...body, thread_id: threadId })
     bus.emit({ topic: `bot:${body.bot_id}`, type: 'run.created', run_id: runId,
                bot_id: body.bot_id, data: { run_id: runId, goal: body.goal } })
     drive(db, bus, body.bot_id, runId)
     return c.json({ run: db.prepare('SELECT * FROM runs WHERE id=?').get(runId) }, 201)
+  })
+
+  /** The bot's current conversation as chat entries, so the app can show it
+   *  after a restart or a bot switch. */
+  app.get('/v1/bots/:id/thread', (c) => {
+    const threadId = currentThread(c.req.param('id'))
+    if (!threadId) return c.json({ thread_id: null, entries: [], run: null })
+    return c.json({ thread_id: threadId, entries: transcript(threadId), run: latestRun(threadId) ?? null })
+  })
+
+  /** Start a fresh conversation; the next message won't see the old one. */
+  app.post('/v1/bots/:id/threads', (c) => {
+    const botId = c.req.param('id')
+    const busy = db.prepare(
+      `SELECT 1 FROM runs WHERE bot_id = ? AND state IN ('queued','running')`,
+    ).get(botId)
+    if (busy) return c.json({ error: 'busy', message: 'stop the current run first' }, 409)
+    return c.json({ thread_id: createThread(db, botId) }, 201)
   })
 
   app.get('/v1/runs', (c) =>
@@ -140,10 +194,20 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     return c.json(await r.json())
   })
 
+  // Giving control back wakes whatever was waiting on the human: a run that
+  // paused because you took over, or one that asked for help (usually a login).
   app.delete('/v1/bots/:id/takeover', async (c) => {
-    const rt = runtimeFor(c.req.param('id')) as LocalDockerRuntime
+    const botId = c.req.param('id')
+    const rt = runtimeFor(botId) as LocalDockerRuntime
     const r = await fetch(await rt.shimUrl('/takeover'), { method: 'DELETE' })
-    return c.json(await r.json())
+    const threadId = currentThread(botId)
+    const last = threadId ? latestRun(threadId) : undefined
+    if (last && waitingOnHuman(last)) {
+      addHumanReply(db, last.id,
+        'I took over your screen and have handed it back. Look at where things are now and carry on.')
+      requeue(last.id, botId)
+    }
+    return c.json({ ...(await r.json() as object), resumed: last && waitingOnHuman(last) ? last.id : null })
   })
 
   // The human's clipboard <-> the bot's X clipboard. The desktop client reads
@@ -170,6 +234,12 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     return c.json({ ok: true })
   })
 }
+
+type RunState = { id: string; state: string; state_reason: string | null }
+
+/** Paused for a takeover, or stopped to ask the human something. */
+const waitingOnHuman = (r: RunState) =>
+  r.state === 'sleeping' || (r.state === 'blocked' && r.state_reason === 'ask_human')
 
 /** On boot, put runs orphaned by the previous instance back in the queue. */
 export function reclaimOrphanedRuns(db: Db, bus: EventBus): number {

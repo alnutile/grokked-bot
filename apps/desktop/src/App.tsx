@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { api, connect, initToken, subscribe, type Bot, type Frame } from './api.ts'
 import { Thread } from './components/Thread.tsx'
@@ -104,10 +104,10 @@ export default function App() {
       </aside>
 
       {active
-        ? <>
+        ? <Fragment key={active}>
             <Thread botId={active} frames={frames} />
             <ComputerPanel botId={active} />
-          </>
+          </Fragment>
         : <div className="thread empty-thread"><p>Create a bot to get started.</p></div>}
     </div>
   )

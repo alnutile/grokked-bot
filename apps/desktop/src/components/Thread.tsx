@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, subscribe, type Frame, type Run } from '../api.ts'
 
 export interface Entry {
-  kind: 'goal' | 'say' | 'tool' | 'done' | 'error'
+  kind: 'goal' | 'say' | 'tool' | 'done' | 'ask' | 'error'
   text: string
   tool?: string
   status?: string
@@ -22,12 +22,34 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
   const [entries, setEntries] = useState<Entry[]>([])
   const [run, setRun] = useState<Run | null>(null)
   const [goal, setGoal] = useState('')
-  const [domains, setDomains] = useState('')
+  // The domain box is remembered per bot: a bot is usually pointed at the same sites.
+  const domainsKey = `grokked.domains.${botId}`
+  const [domains, setDomainsState] = useState(() => {
+    try { return localStorage.getItem(domainsKey) ?? '' } catch { return '' }
+  })
+  const setDomains = (v: string) => {
+    setDomainsState(v)
+    try { localStorage.setItem(domainsKey, v) } catch { /* private mode */ }
+  }
   const [budget, setBudget] = useState('')
   const [sending, setSending] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [entries.length])
+  // Scroll only the message list. scrollIntoView also scrolls every ancestor,
+  // which dragged the whole window down and hid the sidebar and screen.
+  useEffect(() => {
+    const list = endRef.current?.parentElement
+    list?.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
+  }, [entries.length])
+
+  // The conversation lives in the daemon, so it survives restarts and bot switches.
+  useEffect(() => {
+    void api.thread(botId).then((t) => {
+      setEntries(t.entries)
+      setRun(t.run)
+      if (t.run) subscribe([`run:${t.run.id}`, `bot:${botId}`])
+    }).catch(() => {})
+  }, [botId])
 
   // Poll the run row while it is live. The WS carries step events, but state,
   // step count and spend live on the run itself -- without this the header sits
@@ -56,10 +78,13 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
       setEntries((e) => [...e, { kind: 'done', text: String(d.summary ?? '') }])
       void api.run(run.id).then(setRun)
     }
-    if (latest.type === 'run.state' && ['failed', 'blocked', 'paused_budget'].includes(d.state)) {
+    if (latest.type === 'run.state' && d.state === 'blocked' && d.question) {
+      setEntries((e) => [...e, { kind: 'ask', text: String(d.question) }])
+    } else if (latest.type === 'run.state' && ['failed', 'blocked'].includes(d.state)) {
       setEntries((e) => [...e, { kind: 'error', text: `${d.state}${d.reason ? ` — ${d.reason}` : ''}` }])
-      void api.run(run.id).then(setRun)
     }
+    // Any state change (including a wake-up after you give control back) refreshes the header.
+    if (latest.type === 'run.state') void api.run(run.id).then(setRun)
   }, [frames, run?.id])
 
   const send = async () => {
@@ -82,6 +107,14 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
   }
 
   const live = run && ['queued', 'running'].includes(run.state)
+  const waiting = run && (run.state === 'sleeping' || (run.state === 'blocked' && run.state_reason === 'ask_human'))
+
+  const newConversation = async () => {
+    try {
+      await api.newThread(botId)
+      setEntries([]); setRun(null)
+    } catch (e) { setEntries((x) => [...x, { kind: 'error', text: String((e as Error).message) }]) }
+  }
 
   return (
     <div className="thread">
@@ -95,7 +128,12 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
             </div>
           )}
         </div>
-        {live && <button className="btn btn-ghost" onClick={() => api.cancel(run!.id)}>Stop</button>}
+        {live
+          ? <button className="btn btn-ghost" onClick={() => api.cancel(run!.id)}>Stop</button>
+          : entries.length > 0 && (
+              <button className="btn btn-ghost" onClick={newConversation}
+                title="Start fresh: the bot won't see this conversation">New conversation</button>
+            )}
       </div>
 
       <div className="messages">
@@ -148,9 +186,9 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
           <textarea
             value={goal} onChange={(ev) => setGoal(ev.target.value)}
             onKeyDown={(ev) => { if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) void send() }}
-            placeholder={`Message ${botId}…    (⌘/Ctrl+Enter to send)`} rows={2}
+            placeholder={waiting ? `Reply to ${botId}…    (⌘/Ctrl+Enter to send)` : `Message ${botId}…    (⌘/Ctrl+Enter to send)`} rows={2}
           />
-          <button className="btn btn-send" onClick={send} disabled={sending || !goal.trim()}>Send</button>
+          <button className="btn btn-send" onClick={send} disabled={sending || !!live || !goal.trim()}>Send</button>
         </div>
       </div>
     </div>
@@ -162,6 +200,20 @@ function Bubble({ e }: { e: Entry }) {
   if (e.kind === 'say') return <div className="bubble bot">{e.text}</div>
   if (e.kind === 'done') return <div className="bubble done"><b>Done</b><div>{e.text}</div></div>
   if (e.kind === 'error') return <div className="bubble err">{e.text}</div>
+  if (e.kind === 'ask') {
+    return (
+      <div className="bubble ask">
+        <b>Needs you</b>
+        <div>{e.text}</div>
+        <div className="ask-actions">
+          <span className="dim">Reply below, or</span>
+          <button className="btn btn-warn" onClick={() => window.dispatchEvent(new Event('grokked:takeover'))}>
+            Take over the screen
+          </button>
+        </div>
+      </div>
+    )
+  }
   const verb = TOOL_VERB[e.tool ?? ''] ?? e.tool
   return (
     <div className={`step ${e.status === 'error' ? 'step-err' : ''}`}>

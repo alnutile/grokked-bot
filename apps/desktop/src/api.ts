@@ -30,6 +30,12 @@ export interface Bot {
   id: string; name: string; persona_md: string
   autonomy: string; status: string; created_at: number
 }
+/** A chat line rebuilt by the daemon from SQLite. */
+export interface ThreadEntry {
+  kind: 'goal' | 'say' | 'tool' | 'done' | 'ask' | 'error'
+  text: string; tool?: string; status?: string; step?: number; run_id: string
+}
+
 export interface Run {
   id: string; bot_id: string; goal: string; state: string; state_reason: string | null
   step_no: number; max_steps: number; spend_usd: number; max_usd: number
@@ -48,6 +54,9 @@ export const api = {
     req<{ ok: boolean; max_usd: number }>(`/v1/runs/${id}/resume`, {
       method: 'POST', body: JSON.stringify({ add_usd }),
     }),
+  thread: (botId: string) =>
+    req<{ thread_id: string | null; entries: ThreadEntry[]; run: Run | null }>(`/v1/bots/${botId}/thread`),
+  newThread: (botId: string) => req<{ thread_id: string }>(`/v1/bots/${botId}/threads`, { method: 'POST' }),
   createRun: (bot_id: string, goal: string, allowed_domains: string[], max_usd?: number) =>
     req<{ run: Run }>('/v1/runs', {
       method: 'POST',

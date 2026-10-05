@@ -91,6 +91,10 @@ ${c.personaMd ? `\n# About your role\n\n${c.personaMd}` : ''}
 
 # The task
 
+This is a conversation. Earlier requests and how they ended may come before the
+current one; use them to make sense of follow-ups like "did it work?" or "now do the
+same for 2022", and answer a plain question with \`finish\` rather than starting work.
+
 ${c.goal}`
 }
 

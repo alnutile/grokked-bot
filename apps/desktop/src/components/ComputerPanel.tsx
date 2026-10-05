@@ -48,6 +48,13 @@ export function ComputerPanel({ botId }: { botId: string }) {
     } catch (e) { setErr(String((e as Error).message)) } finally { setBusy(false) }
   }
 
+  // "Take over the screen" on a bot's question in the chat.
+  useEffect(() => {
+    const onAsk = () => { if (!mine) void toggle() }
+    window.addEventListener('grokked:takeover', onAsk)
+    return () => window.removeEventListener('grokked:takeover', onAsk)
+  })
+
   const pasteIn = async () => {
     try {
       const text = await hostRead()

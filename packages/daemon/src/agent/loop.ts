@@ -9,6 +9,7 @@ import { log } from '../log.ts'
 import type { BotRuntime } from '../runtime/container.ts'
 import { TOOLS_BY_NAME, toolDefs } from '../tools/registry.ts'
 import { systemPrompt, wrapUntrusted } from './prompt.ts'
+import { toolSummary } from './transcript.ts'
 
 const now = () => Date.now()
 const id = (p: string) => `${p}_${randomUUID().replaceAll('-', '').slice(0, 16)}`
@@ -19,6 +20,8 @@ const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0
  *  stale pictures on every single call. */
 const KEEP_IMAGES = 2
 const TOOL_RESULT_CAP = 4000
+/** Earlier requests in a conversation ride along as one exchange each. */
+const HISTORY_RUNS = 20
 
 export interface CreateRunInput {
   bot_id: string
@@ -26,20 +29,40 @@ export interface CreateRunInput {
   allowed_domains?: string[]
   max_steps?: number
   max_usd?: number
+  /** Continue this conversation; omitted means start a new one. */
+  thread_id?: string
+}
+
+/**
+ * A conversation is a thread; each message the human sends starts a run in it.
+ * Messages are tagged by step_no so the transcript can be rebuilt: 0 is the
+ * request that started a run, NULL is a human reply mid-run (an answer to
+ * ask_human, or "carry on" after a takeover), anything else came from a step.
+ */
+export function createThread(db: Db, botId: string, title = ''): string {
+  const threadId = id('thr')
+  db.prepare(
+    `INSERT INTO threads (id, bot_id, kind, title, last_message_at, created_at)
+     VALUES (?, ?, 'chat', ?, ?, ?)`,
+  ).run(threadId, botId, title.slice(0, 120), now(), now())
+  return threadId
+}
+
+/** A reply from the human to a run that stopped to wait for them. */
+export function addHumanReply(db: Db, runId: string, text: string): void {
+  const run = getRun(db, runId)
+  if (!run) throw new Error(`no run ${runId}`)
+  addMessage(db, run.thread_id, 'user', text, { run_id: runId })
 }
 
 export function createRun(db: Db, input: CreateRunInput): string {
   const cfg = loadConfig()
   const runId = id('run')
-  const threadId = id('thr')
   const t = now()
 
   db.exec('BEGIN')
   try {
-    db.prepare(
-      `INSERT INTO threads (id, bot_id, kind, title, last_message_at, created_at)
-       VALUES (?, ?, 'run', ?, ?, ?)`,
-    ).run(threadId, input.bot_id, input.goal.slice(0, 120), t, t)
+    const threadId = input.thread_id ?? createThread(db, input.bot_id, input.goal)
 
     db.prepare(
       `INSERT INTO runs (id, bot_id, thread_id, trigger_kind, goal, allowed_domains_json,
@@ -54,6 +77,7 @@ export function createRun(db: Db, input: CreateRunInput): string {
       cfg.defaults.max_screenshots,
       t,
     )
+    addMessage(db, threadId, 'user', input.goal, { run_id: runId, step_no: 0 })
     db.exec('COMMIT')
   } catch (e) {
     db.exec('ROLLBACK')
@@ -90,6 +114,7 @@ function addMessage(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(id('msg'), threadId, seq, role, body, extra.tool_call_id ?? null,
         extra.run_id ?? null, extra.step_no ?? null, Math.round(body.length / 3.6), now())
+  db.prepare('UPDATE threads SET last_message_at = ? WHERE id = ?').run(now(), threadId)
 }
 
 /**
@@ -99,8 +124,8 @@ function addMessage(
  */
 function assembleMessages(db: Db, run: RunRow, botName: string, personaMd: string): ChatMessage[] {
   const rows = db
-    .prepare('SELECT role, content_json, tool_call_id FROM messages WHERE thread_id = ? ORDER BY seq ASC')
-    .all(run.thread_id) as Array<{ role: string; content_json: string; tool_call_id: string | null }>
+    .prepare('SELECT role, content_json, tool_call_id FROM messages WHERE run_id = ? ORDER BY seq ASC')
+    .all(run.id) as Array<{ role: string; content_json: string; tool_call_id: string | null }>
 
   const msgs: ChatMessage[] = [{
     role: 'system',
@@ -112,6 +137,23 @@ function assembleMessages(db: Db, run: RunRow, botName: string, personaMd: strin
       maxSteps: run.max_steps,
     }),
   }]
+
+  // Earlier requests in this conversation, condensed to what was asked and how
+  // it ended. Their tool calls and page dumps stay out: they cost tokens on
+  // every step, and a finished run's last tool call has no result to pair with.
+  const earlier = db.prepare(
+    `SELECT goal, state, state_reason, outcome_summary FROM runs
+     WHERE thread_id = ? AND created_at < ? AND id != ?
+     ORDER BY created_at DESC LIMIT ?`,
+  ).all(run.thread_id, run.created_at, run.id, HISTORY_RUNS) as Array<
+    { goal: string; state: string; state_reason: string | null; outcome_summary: string | null }>
+  for (const r of earlier.reverse()) {
+    msgs.push({ role: 'user', content: r.goal })
+    msgs.push({
+      role: 'assistant',
+      content: r.outcome_summary ?? `(that request ended ${r.state}${r.state_reason ? `: ${r.state_reason}` : ''})`,
+    })
+  }
 
   const parsed = rows.map((r) => ({ ...r, content: JSON.parse(r.content_json) as any }))
   const imageIdx = parsed
@@ -313,7 +355,12 @@ async function dispatchTool(
     return { done: true, state: 'failed', reason: args.reason }
   }
   if (tool.control === 'ask_human') {
-    addMessage(db, run.thread_id, 'assistant', args.question, { run_id: runId, step_no: stepNo })
+    // Answer the tool call so the run can continue later; the human's reply
+    // arrives as the next user message. The question is kept on the run so the
+    // transcript and later history can show it.
+    addMessage(db, run.thread_id, 'tool', 'Your question is in front of the human. Their reply will be the next message.',
+      { tool_call_id: call.id, run_id: runId, step_no: stepNo })
+    db.prepare('UPDATE runs SET outcome_summary = ? WHERE id = ?').run(args.question, runId)
     setState(db, bus, runId, 'blocked', 'ask_human')
     bus.emit({ topic: `run:${runId}`, type: 'run.state', run_id: runId,
                data: { run_id: runId, state: 'blocked', question: args.question } })
@@ -377,7 +424,7 @@ async function dispatchTool(
     topic: `run:${runId}`, type: 'run.step', run_id: runId,
     data: { run_id: runId, step_no: stepNo, kind: 'tool_call', tool_name: tool.name,
             status: out?.ok === false ? 'error' : 'ok',
-            summary: args.element ?? args.url ?? args.command ?? args.query ?? '' },
+            summary: toolSummary(args) },
   })
 
   if (out?.error === 'human_has_control') {

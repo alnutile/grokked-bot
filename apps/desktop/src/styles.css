@@ -9,7 +9,11 @@
 body { margin: 0; background: var(--bg); color: var(--text); overflow: hidden; }
 button { font: inherit; }
 
-.app { display: grid; grid-template-columns: 236px minmax(420px, 1fr) 380px; height: 100vh; }
+.app { display: grid; grid-template-columns: 236px minmax(420px, 1fr) 380px;
+       grid-template-rows: 100vh; height: 100vh; overflow: hidden; }
+/* Each column scrolls on its own; the window never does. */
+.app > * { min-height: 0; overflow: hidden; }
+.computer { overflow-y: auto; }
 
 /* ---------- sidebar ---------- */
 .sidebar { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 12px; gap: 10px; }
@@ -43,6 +47,9 @@ button { font: inherit; }
 .bubble.you { align-self: flex-end; background: var(--accent); color: #fff; }
 .bubble.bot { align-self: flex-start; background: var(--panel-2); }
 .bubble.done { align-self: flex-start; background: #12281a; border: 1px solid #23663a; max-width: 92%; }
+.bubble.ask { align-self: flex-start; background: #2b2312; border: 1px solid #6b5416; max-width: 92%; }
+.ask-actions { display: flex; align-items: center; gap: 9px; margin-top: 9px; font-size: 12px; }
+.ask-actions .dim { color: #c9b072; }
 .bubble.err { align-self: flex-start; background: #2a1416; border: 1px solid #6e2b2b; color: #ffb4ae; }
 .step { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--dim);
         padding: 2px 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

@@ -98,8 +98,13 @@ seconds.
 3. Type what you want, the way you would to a colleague, and press **Ctrl+Enter**.
 
 The conversation shows each step as it happens, and the bot's screen on the right shows
-what it's doing. If it hits something it can't do alone — a login wall, a CAPTCHA — it
-asks you.
+what it's doing. It's a real conversation: follow-ups like "now do the same for 2022" or
+"did that work?" see what came before, and the chat is still there after a restart.
+**New conversation** starts fresh.
+
+If it hits something it can't do alone — a login wall, a CAPTCHA, a question only you can
+answer — it stops and asks. Reply in the chat, or click **Take over the screen**; either
+way it carries on from where it stopped.
 
 **Taking over.** Click **Take over** to pause the bot and drive its screen yourself, full
 size; this is how you sign in to sites for it. **Paste from my PC** pastes your clipboard
