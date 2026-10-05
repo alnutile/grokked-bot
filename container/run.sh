@@ -16,12 +16,13 @@ docker run -d --name "$NAME" \
   --shm-size=2g \
   --memory=6g --cpus=3 --pids-limit=1024 \
   --security-opt no-new-privileges \
-  -p 127.0.0.1:16080:6080 \
-  -p 127.0.0.1:18088:8088 \
+  -p 127.0.0.1::6080 \
+  -p 127.0.0.1::8088 \
   -e TZ="${TZ:-America/New_York}" \
   "$IMAGE" >/dev/null
 
 echo "$NAME started"
-echo "  watch:  http://127.0.0.1:16080/vnc.html?autoconnect=1&resize=scale"
-echo "  shim:   http://127.0.0.1:18088/health"
+# Docker picks free host ports so several bots can run side by side.
+echo "  watch:  http://$(docker port "$NAME" 6080/tcp | head -1)/vnc.html?autoconnect=1&resize=scale"
+echo "  shim:   http://$(docker port "$NAME" 8088/tcp | head -1)/health"
 echo "  work:   $WORK"
