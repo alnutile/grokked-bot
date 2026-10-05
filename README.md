@@ -11,9 +11,132 @@ You message a bot like a colleague. It has **its own computer** — a real deskt
 real browser it stays logged into, plus a shell — and it uses whichever fits the job. You
 watch it work on the right, and you can take the mouse away from it at any moment.
 
-Above: one bot pulling Senate spending across four election cycles from `fec.gov`,
-switching years through the site's own dropdown, then writing and running Python to build
-a report — narrating as it goes.
+Above: asked for the top 10 spenders of 2024 on `fec.gov`, the bot opened the page, read
+the table and answered in three steps for about five cents — and said which view it had
+read, so you know what to ask for next. On the right is its live screen, with a human
+holding control.
+
+## Quick start
+
+Tested on Ubuntu with Node 24. Nothing below needs root except installing system packages.
+
+### 1. Install the prerequisites
+
+| | |
+|---|---|
+| **Node 24+** | Runs the TypeScript daemon directly, no build step. [nvm](https://github.com/nvm-sh/nvm) works fine. |
+| **pnpm** | `corepack enable` (ships with Node) |
+| **Rust** | [rustup.rs](https://rustup.rs) — for the Tauri desktop app |
+| **Tauri's system libs** | `sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev` |
+| **Rootless Docker** | [docs.docker.com/engine/security/rootless](https://docs.docker.com/engine/security/rootless/) |
+| **An OpenRouter key** | [openrouter.ai/keys](https://openrouter.ai/keys), with a few dollars of credit |
+
+Then set up rootless Docker and let your user services outlive your login:
+
+```bash
+dockerd-rootless-setuptool.sh install
+systemctl --user enable --now docker.service
+loginctl enable-linger "$USER"          # bots keep working after you log out
+```
+
+Prefer **rootless** Docker over adding yourself to the `docker` group: that group is
+effectively root (`docker run -v /:/host`), a poor trade for a system whose job is holding
+live credentials.
+
+### 2. Get the code and build the bot's computer
+
+```bash
+git clone https://github.com/alnutile/grokked-bot.git
+cd grokked-bot
+pnpm install
+
+export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock
+docker build -t grokked/computer:0.1 container/     # ~5GB, takes a few minutes
+```
+
+### 3. Add your OpenRouter key
+
+```bash
+mkdir -p ~/.config/grokked
+printf 'OPENROUTER_API_KEY=sk-or-...\n' > ~/.config/grokked/env
+chmod 600 ~/.config/grokked/env
+```
+
+### 4. Install the daemon
+
+The daemon is a `systemd --user` service. The unit file has placeholders for where Node
+and this repo live; this fills them in:
+
+```bash
+mkdir -p ~/.config/systemd/user
+sed -e "s|@NODE@|$(command -v node)|" -e "s|@REPO@|$PWD|g" \
+  packages/daemon/deploy/grokked.service > ~/.config/systemd/user/grokked.service
+systemctl --user daemon-reload
+systemctl --user enable --now grokked.service
+
+systemctl --user status grokked           # should say active (running)
+```
+
+If you upgrade Node later (nvm puts the version in the path), re-run the `sed` line.
+
+### 5. Open the app
+
+```bash
+./run-app.sh
+```
+
+The first run compiles the Tauri app, which takes a few minutes. After that it opens in
+seconds.
+
+## Your first task
+
+1. Click **+ New bot** and give it a name. Each bot gets its own computer — its own
+   container, browser profile and logins — created the first time it's needed.
+2. In the box above the message field, list the domains the bot may visit, for example
+   `fec.gov`. This allowlist is enforced inside the container, not just in the prompt.
+   **max $** caps what this one run may spend.
+3. Type what you want, the way you would to a colleague, and press **Ctrl+Enter**.
+
+The conversation shows each step as it happens, and the bot's screen on the right shows
+what it's doing. If it hits something it can't do alone — a login wall, a CAPTCHA — it
+asks you.
+
+**Taking over.** Click **Take over** to pause the bot and drive its screen yourself; this
+is how you sign in to sites for it. Click **Give control back** and it picks up on
+whatever page you left it, in the same browser with the same session. Logins are kept in
+the bot's profile, so you sign in once.
+
+The sidebar shows your remaining OpenRouter credit. The app connects to the bot's screen
+for you. To watch a bot in a full browser tab instead, `./vnc.sh` lists every running bot
+with its password and a link that logs straight in; `./vnc.sh <bot-id>` opens that one.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| App says the daemon is offline | `systemctl --user status grokked`, then `journalctl --user -u grokked -n 50` |
+| `Cannot connect to the Docker daemon` | `export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock` and `systemctl --user start docker` |
+| Bot's screen stays blank or says "computer unreachable" | Click **Restart computer**. The first start can take a minute while Chrome comes up. |
+| A run ends **blocked** | Something stopped it — usually a domain not on the allowlist, or a page it couldn't get past. The run's last steps say which. Take over if it needs you, then send another message. |
+| A run pauses on budget | It hit its **max $**. Continue it with more, or raise the default in `~/.config/grokked/config.json`. |
+| Model errors on boot | A model id in `~/.config/grokked/config.json` no longer exists on OpenRouter. The daemon log names it. |
+
+Each bot's computer is a container named after the bot (`docker ps`). Docker picks free
+host ports for its screen and its control API, so any number of bots can run side by side.
+
+## Configuration
+
+```
+~/.config/grokked/env          OPENROUTER_API_KEY, optional DOCKER_HOST   (0600)
+~/.config/grokked/config.json  model per role, default caps (written on first boot)
+~/.config/grokked/token        API bearer token     (0600, generated on first boot)
+~/.local/share/grokked/        grokked.db, blobs, per-bot work dirs
+```
+
+`config.json` picks a model for each role — `worker` does the actual task — using any
+OpenRouter model id, and sets the default per-run caps (`max_steps`, `max_usd`,
+`max_wall_s`). The daemon listens on `127.0.0.1:8787`; set `GROKKED_PORT` in the env file
+to change it.
 
 ## Why Linux is the right host for this
 
@@ -58,52 +181,28 @@ on a stale one is a hard error rather than a wrong click.
 
 Watching is `view_only`; **Take over** flips that *and* claims a lease, so the agent stops
 acting — without it, both drive the same X server and fight over the cursor. The lock is
-one-directional: it stops the bot, never you. On release the agent resumes **on whatever
-page you left it on**, in the same browser with the same session. That is how sign-ins
-work: hit a login wall, the bot calls `ask_human`, you sign in by hand, it carries on.
+one-directional: it stops the bot, never you. On release the agent resumes on whatever
+page you left it on. That is how sign-ins work: hit a login wall, the bot calls
+`ask_human`, you sign in by hand, it carries on.
 
-## Setup
-
-Needs Node 24+ (runs TypeScript natively), Rust, and rootless Docker. None of it needs root.
+## Without the GUI
 
 ```bash
-dockerd-rootless-setuptool.sh install    # -> unix:///run/user/1000/docker.sock
-loginctl enable-linger "$USER"           # survive logout and reboot
-pnpm install
-container/build.sh 2>/dev/null || (cd container && docker build -t grokked/computer:0.1 .)
+TOKEN=$(cat ~/.config/grokked/token)
 
-cp packages/daemon/deploy/grokked.service ~/.config/systemd/user/
-systemctl --user daemon-reload && systemctl --user enable --now grokked.service
-```
+# Hand the default bot a job and stream its progress in the terminal
+node packages/daemon/bin/task.ts "<goal>" fec.gov
 
-Put your key in `~/.config/grokked/env` (mode 0600):
-
-```
-OPENROUTER_API_KEY=sk-or-...
-DOCKER_HOST=unix:///run/user/1000/docker.sock
-```
-
-Then:
-
-```bash
-./run-app.sh          # starts docker + daemon + the bot's computer, opens the app
-```
-
-Prefer **rootless** Docker over adding yourself to the `docker` group: that group is
-effectively root (`docker run -v /:/host`), a poor trade for a system whose job is holding
-live credentials.
-
-### Without the GUI
-
-```bash
-node packages/daemon/bin/task.ts "<goal>" fec.gov      # streams progress in the terminal
-
-curl -X POST localhost:8787/v1/runs -H "Authorization: Bearer $(cat ~/.config/grokked/token)" \
+# Or over the API: create a bot, then give it a run
+curl -X POST localhost:8787/v1/bots -H "Authorization: Bearer $TOKEN" \
+  -d '{"id":"bot-alpha","name":"Alpha"}'
+curl -X POST localhost:8787/v1/runs -H "Authorization: Bearer $TOKEN" \
   -d '{"bot_id":"bot-alpha","goal":"...","allowed_domains":["fec.gov"],"max_usd":5}'
 ```
 
 And the container is drivable by hand with no model in the loop, which is how the browser
-layer was built and verified:
+layer was built and verified. `container/run.sh <name>` starts a standalone computer and
+prints its ports; `act.sh` talks to it:
 
 ```bash
 container/act.sh navigate url=https://example.com
@@ -134,11 +233,17 @@ instruction — an answer obtained the way you were told not to is a failed task
   remaining OpenRouter credit so the two are never confused.
 - **CDP port 9222 is never published.** It is unauthenticated, and
   `Network.getAllCookies` over it would drain every session in the profile.
+- **Everything binds to `127.0.0.1`.** The screen and control ports are loopback-only, and
+  VNC is password-protected on top of that.
 - The container never mounts your home directory. Only a narrow `work/` bind mount is shared.
+
+Approvals — a gate before the bot acts on a site you're logged into — are not built yet.
+Until they are, keep the domain allowlist tight on any bot that holds real logins.
 
 ## Status
 
-Working today: the bot's computer, the agent loop, the desktop app, budgets, human takeover.
+Working today: the bot's computer, the agent loop, the desktop app, multiple bots side by
+side, budgets, human takeover.
 
 | | |
 |---|---|
@@ -148,8 +253,8 @@ Working today: the bot's computer, the agent loop, the desktop app, budgets, hum
 | **M1** | Three-pane desktop app with the bot's live screen |
 | next | **M4** approvals — the gate before pointing this at anything you're logged into |
 
-Not done yet: approvals, persistent memory, learned routines, multiple bots working
-together, prompt caching (which is the biggest cost lever still on the table).
+Not done yet: approvals, persistent memory, learned routines, bots working together,
+prompt caching (which is the biggest cost lever still on the table).
 
 ## Layout
 
@@ -161,13 +266,6 @@ together, prompt caching (which is the biggest cost lever still on the table).
 | `container` | The bot's computer: Xvfb + openbox + Chrome + x11vnc + the CDP shim |
 | `apps/desktop` | Tauri v2 + React client |
 
-```
-~/.config/grokked/env          OPENROUTER_API_KEY   (0600)
-~/.config/grokked/config.json  model per role, default caps
-~/.config/grokked/token        API bearer token     (0600, generated on first boot)
-~/.local/share/grokked/        grokked.db, blobs, per-bot work dirs
-```
-
 ## Design notes worth knowing before changing things
 
 - **The daemon holds no run state that is not in SQLite.** One code path serves start,
@@ -175,6 +273,9 @@ together, prompt caching (which is the biggest cost lever still on the table).
 - **The WS is a cache-invalidation channel, not the source of truth.** Every frame is
   appended to `events` first so `?since=` replay can rebuild client state; a client whose
   `since` predates retention gets `hello{dropped:true}` and refetches.
+- **Never assume a bot's ports.** Docker assigns them per container and can change them on
+  restart; ask the runtime (`LocalDockerRuntime.ports()`). Pinning them is what once let
+  one bot's screen open with another bot's VNC password.
 - **`--password-store=basic` is load-bearing.** Without it Chrome looks for gnome-keyring
   over D-Bus, which a container has not got, and re-derives its cookie key each boot — so
   every login silently stops persisting and it looks like a broken volume.
@@ -184,8 +285,8 @@ together, prompt caching (which is the biggest cost lever still on the table).
 ## Tests
 
 ```bash
-node packages/daemon/test/ws-replay.test.ts
-./node_modules/.bin/tsc --noEmit
+pnpm test
+pnpm typecheck
 ```
 
 ## Name

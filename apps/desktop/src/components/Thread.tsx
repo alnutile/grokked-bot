@@ -22,7 +22,7 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
   const [entries, setEntries] = useState<Entry[]>([])
   const [run, setRun] = useState<Run | null>(null)
   const [goal, setGoal] = useState('')
-  const [domains, setDomains] = useState('fec.gov')
+  const [domains, setDomains] = useState('')
   const [budget, setBudget] = useState('')
   const [sending, setSending] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
@@ -135,8 +135,8 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
         <div className="composer-opts">
           <input
             className="domains" value={domains} onChange={(ev) => setDomains(ev.target.value)}
-            placeholder="allowed domains (comma separated)"
-            title="Sites this run may visit. Enforced in the container, not the prompt."
+            placeholder="any site — or limit it, e.g. linkedin.com, fec.gov"
+            title="Sites this run may visit. Blank means any site. Enforced in the container, not the prompt."
           />
           <input
             className="domains budget" value={budget} onChange={(ev) => setBudget(ev.target.value)}
