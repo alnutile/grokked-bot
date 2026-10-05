@@ -18,25 +18,31 @@ export interface BotRuntime {
   act(action: string, args: Record<string, unknown>): Promise<ActResult>
   setAllowedDomains(domains: string[]): Promise<void>
   isHumanInControl(): Promise<boolean>
-  vncUrl(): string
+  vncUrl(): Promise<string>
 }
 
 export class LocalDockerRuntime implements BotRuntime {
   // Node's strip-only TS mode rejects parameter properties, so fields are explicit.
   readonly name: string
-  readonly shimPort: number
-  readonly vncPort: number
   readonly image: string
 
-  constructor(name: string, shimPort = 18088, vncPort = 16080, image = 'grokked/computer:0.1') {
+  constructor(name: string, image = 'grokked/computer:0.1') {
     this.name = name
-    this.shimPort = shimPort
-    this.vncPort = vncPort
     this.image = image
   }
 
   async ensureUp(): Promise<void> {
-    const running = await this.#state()
+    let running = await this.#state()
+
+    // Computers created before per-bot ports were all pinned to 16080/18088, so
+    // only one bot could be up at a time. Recreate them; the profile volume and
+    // work dir carry over, so logins survive.
+    if (running !== null && await this.#hasPinnedPorts()) {
+      log.info({ bot: this.name }, 'recreating bot computer without pinned ports')
+      await exec('docker', ['rm', '-f', this.name], { env })
+      running = null
+    }
+
     if (running === 'running') { await this.#waitHealthy(); return }
 
     if (running === null) {
@@ -47,8 +53,8 @@ export class LocalDockerRuntime implements BotRuntime {
         '-v', `${process.env.HOME}/.local/share/grokked/bots/${this.name}/work:/data/work`,
         '--shm-size=2g', '--memory=6g', '--cpus=3', '--pids-limit=1024',
         '--security-opt', 'no-new-privileges',
-        '-p', `127.0.0.1:${this.vncPort}:6080`,
-        '-p', `127.0.0.1:${this.shimPort}:8088`,
+        '-p', '127.0.0.1::6080',
+        '-p', '127.0.0.1::8088',
         this.image,
       ], { env })
     } else {
@@ -67,12 +73,33 @@ export class LocalDockerRuntime implements BotRuntime {
     }
   }
 
+  async #hasPinnedPorts(): Promise<boolean> {
+    const { stdout } = await exec('docker', ['inspect', '-f', '{{json .HostConfig.PortBindings}}', this.name], { env })
+    const bindings = JSON.parse(stdout) as Record<string, Array<{ HostPort: string }>> | null
+    return Object.values(bindings ?? {}).some((bs) => bs.some((b) => b.HostPort !== ''))
+  }
+
+  /** Host ports Docker actually bound. Docker picks free ones per container and
+   *  may pick new ones on every start, so they're looked up rather than cached. */
+  async ports(): Promise<{ shim: number; vnc: number }> {
+    const port = async (p: number) => {
+      const { stdout } = await exec('docker', ['port', this.name, `${p}/tcp`], { env })
+      return Number(stdout.trim().split('\n')[0]!.split(':').pop())
+    }
+    const [vnc, shim] = await Promise.all([port(6080), port(8088)])
+    return { shim, vnc }
+  }
+
+  async shimUrl(path: string): Promise<string> {
+    return `http://127.0.0.1:${(await this.ports()).shim}${path}`
+  }
+
   async #waitHealthy(timeoutMs = 120_000): Promise<void> {
     const deadline = Date.now() + timeoutMs
     let last = ''
     while (Date.now() < deadline) {
       try {
-        const r = await fetch(`http://127.0.0.1:${this.shimPort}/health`, {
+        const r = await fetch(await this.shimUrl('/health'), {
           signal: AbortSignal.timeout(2000),
         })
         const body = (await r.json()) as { ok: boolean; error?: string }
@@ -87,7 +114,7 @@ export class LocalDockerRuntime implements BotRuntime {
   }
 
   async act(action: string, args: Record<string, unknown>): Promise<ActResult> {
-    const res = await fetch(`http://127.0.0.1:${this.shimPort}/act`, {
+    const res = await fetch(await this.shimUrl('/act'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action, ...args }),
@@ -100,7 +127,7 @@ export class LocalDockerRuntime implements BotRuntime {
   }
 
   async setAllowedDomains(domains: string[]): Promise<void> {
-    await fetch(`http://127.0.0.1:${this.shimPort}/session`, {
+    await fetch(await this.shimUrl('/session'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ allowed_domains: domains }),
@@ -109,7 +136,7 @@ export class LocalDockerRuntime implements BotRuntime {
 
   async isHumanInControl(): Promise<boolean> {
     try {
-      const r = await fetch(`http://127.0.0.1:${this.shimPort}/takeover`, {
+      const r = await fetch(await this.shimUrl('/takeover'), {
         signal: AbortSignal.timeout(2000),
       })
       return ((await r.json()) as { held: boolean }).held
@@ -129,7 +156,7 @@ export class LocalDockerRuntime implements BotRuntime {
     }
   }
 
-  vncUrl(): string {
-    return `http://127.0.0.1:${this.vncPort}/vnc.html?autoconnect=1&resize=scale`
+  async vncUrl(): Promise<string> {
+    return `http://127.0.0.1:${(await this.ports()).vnc}/vnc.html?autoconnect=1&resize=scale`
   }
 }

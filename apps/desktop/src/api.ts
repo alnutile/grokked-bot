@@ -55,7 +55,7 @@ export const api = {
     }).then((r) => r.run),
   cancel: (id: string) => req(`/v1/runs/${id}/cancel`, { method: 'POST' }),
   computer: (botId: string) =>
-    req<{ vnc_url: string; vnc_port: number; vnc_password: string | null; human_in_control: boolean }>(`/v1/bots/${botId}/computer`),
+    req<{ vnc_url: string | null; vnc_port: number | null; vnc_password: string | null; human_in_control: boolean }>(`/v1/bots/${botId}/computer`),
   startComputer: (botId: string) => req(`/v1/bots/${botId}/computer/start`, { method: 'POST' }),
   takeover: (botId: string) => req(`/v1/bots/${botId}/takeover`, { method: 'POST', body: '{"holder":"you"}' }),
   release: (botId: string) => req(`/v1/bots/${botId}/takeover`, { method: 'DELETE' }),

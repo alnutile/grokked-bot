@@ -117,9 +117,10 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
 
   app.get('/v1/bots/:id/computer', async (c) => {
     const rt = runtimeFor(c.req.param('id')) as LocalDockerRuntime
+    const ports = await rt.ports().catch(() => null)
     return c.json({
-      vnc_url: rt.vncUrl(),
-      vnc_port: rt.vncPort,
+      vnc_url: ports ? await rt.vncUrl() : null,
+      vnc_port: ports?.vnc ?? null,
       vnc_password: await rt.vncPassword().catch(() => null),
       human_in_control: await rt.isHumanInControl().catch(() => false),
     })
@@ -131,7 +132,7 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     const rt = runtimeFor(c.req.param('id')) as LocalDockerRuntime
     const body: { holder?: string; ttl_s?: number } =
       await c.req.json<{ holder?: string; ttl_s?: number }>().catch(() => ({}))
-    const r = await fetch(`http://127.0.0.1:${rt.shimPort}/takeover`, {
+    const r = await fetch(await rt.shimUrl('/takeover'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ holder: body.holder ?? 'you', ttl_s: body.ttl_s ?? 900 }),
@@ -141,7 +142,7 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
 
   app.delete('/v1/bots/:id/takeover', async (c) => {
     const rt = runtimeFor(c.req.param('id')) as LocalDockerRuntime
-    const r = await fetch(`http://127.0.0.1:${rt.shimPort}/takeover`, { method: 'DELETE' })
+    const r = await fetch(await rt.shimUrl('/takeover'), { method: 'DELETE' })
     return c.json(await r.json())
   })
 
