@@ -18,7 +18,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     SHIM_PORT=8088
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      xvfb x11vnc novnc websockify openbox xdotool \
+      xvfb x11vnc novnc websockify openbox xdotool xclip \
       tint2 xterm pcmanfm \
       x11-utils x11-xserver-utils dbus-x11 \
       supervisor tini ffmpeg \

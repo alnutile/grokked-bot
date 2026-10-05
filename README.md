@@ -101,8 +101,10 @@ The conversation shows each step as it happens, and the bot's screen on the righ
 what it's doing. If it hits something it can't do alone — a login wall, a CAPTCHA — it
 asks you.
 
-**Taking over.** Click **Take over** to pause the bot and drive its screen yourself; this
-is how you sign in to sites for it. Click **Give control back** and it picks up on
+**Taking over.** Click **Take over** to pause the bot and drive its screen yourself, full
+size; this is how you sign in to sites for it. **Paste from my PC** pastes your clipboard
+where the bot's cursor is (handy for passwords), and **Copy to my PC** brings back
+whatever you copied on its screen. The ⤢ button opens the screen full size just to watch. Click **Give control back** and it picks up on
 whatever page you left it, in the same browser with the same session. Logins are kept in
 the bot's profile, so you sign in once.
 

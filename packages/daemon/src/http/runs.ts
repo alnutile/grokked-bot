@@ -146,6 +146,24 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     return c.json(await r.json())
   })
 
+  // The human's clipboard <-> the bot's X clipboard. The desktop client reads
+  // and writes the host side; this moves the text across.
+  app.get('/v1/bots/:id/clipboard', async (c) => {
+    const rt = runtimeFor(c.req.param('id')) as LocalDockerRuntime
+    const r = await fetch(await rt.shimUrl('/clipboard'))
+    return c.json(await r.json(), r.status as 200)
+  })
+
+  app.post('/v1/bots/:id/clipboard', async (c) => {
+    const rt = runtimeFor(c.req.param('id')) as LocalDockerRuntime
+    const r = await fetch(await rt.shimUrl('/clipboard'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(await c.req.json()),
+    })
+    return c.json(await r.json(), r.status as 200)
+  })
+
   app.post('/v1/bots/:id/computer/start', async (c) => {
     const rt = runtimeFor(c.req.param('id'))
     await rt.ensureUp()

@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { Session, Fail } from './session.js'
+import { readClipboard, writeClipboard } from './clipboard.js'
 
 const PORT = Number(process.env.SHIM_PORT || 8088)
 const TOKEN = process.env.SHIM_TOKEN || ''
@@ -85,6 +86,21 @@ const server = createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/takeover') {
     return json(res, 200, { ok: true, held: leaseHeld(), lease })
+  }
+
+  if (req.method === 'GET' && url.pathname === '/clipboard') {
+    return json(res, 200, { ok: true, text: await readClipboard() })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/clipboard') {
+    const body = await readBody(req)
+    if (!body || typeof body.text !== 'string') return json(res, 400, { ok: false, error: 'bad_json' })
+    try {
+      await writeClipboard(body.text, { paste: body.paste === true })
+      return json(res, 200, { ok: true })
+    } catch (err) {
+      return json(res, 500, { ok: false, error: 'clipboard_failed', message: String(err?.message ?? err) })
+    }
   }
 
   if (req.method === 'POST' && url.pathname === '/act') {

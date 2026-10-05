@@ -59,6 +59,10 @@ export const api = {
   startComputer: (botId: string) => req(`/v1/bots/${botId}/computer/start`, { method: 'POST' }),
   takeover: (botId: string) => req(`/v1/bots/${botId}/takeover`, { method: 'POST', body: '{"holder":"you"}' }),
   release: (botId: string) => req(`/v1/bots/${botId}/takeover`, { method: 'DELETE' }),
+  botClipboard: (botId: string) =>
+    req<{ text: string }>(`/v1/bots/${botId}/clipboard`).then((r) => r.text),
+  setBotClipboard: (botId: string, text: string, paste = false) =>
+    req(`/v1/bots/${botId}/clipboard`, { method: 'POST', body: JSON.stringify({ text, paste }) }),
   token: () => TOKEN,
 }
 
