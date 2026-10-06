@@ -70,6 +70,26 @@ jobs:
       - run: pnpm tauri build --target ${{ matrix.target }} --bundles app,dmg
         working-directory: apps/desktop
 
+      # Start the daemon the way the app does -- the bundled node, inside the
+      # signed .app, on the bundled daemon -- and require a healthy answer.
+      # A signing problem (e.g. V8 can't JIT under the hardened runtime) kills
+      # node before any of our code runs, and only shows up here or on a Mac.
+      # Native arch only: the runner is Apple Silicon.
+      - name: Smoke test the bundled daemon
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: |
+          APP="apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Grokked Bot.app"
+          codesign -dv --verbose=2 "$APP/Contents/MacOS/node" 2>&1 | grep -iE "flags|signature" || true
+          export HOME="$(mktemp -d)" GROKKED_PORT=8790
+          "$APP/Contents/MacOS/node" "$APP/Contents/Resources/daemon/grokked.mjs" > daemon.log 2>&1 &
+          TOKEN_FILE="$HOME/Library/Application Support/Grokked/token"
+          for i in $(seq 1 30); do
+            if [ -f "$TOKEN_FILE" ] && curl -sf -H "authorization: Bearer $(cat "$TOKEN_FILE")" \
+                 http://127.0.0.1:8790/v1/health; then echo; echo "daemon healthy"; kill %1; exit 0; fi
+            sleep 1
+          done
+          echo "daemon never became healthy:"; cat daemon.log; ls -R "$APP/Contents" | head -40; exit 1
+
       - uses: actions/upload-artifact@v4
         with:
           name: grokked-bot-${{ matrix.target }}

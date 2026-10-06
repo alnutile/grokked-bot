@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- What the bundled Node needs under the hardened runtime: V8 JIT-compiles,
+     so without allow-jit it dies at startup with "Failed to reserve virtual
+     memory for CodeRange". Hardened runtime is off until we notarize (see
+     tauri.macos.conf.json); this is here so turning it on is one line. -->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+</dict>
+</plist>
