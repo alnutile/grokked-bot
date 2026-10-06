@@ -13,7 +13,7 @@ export interface Entry {
 
 const TOOL_VERB: Record<string, string> = {
   browser_navigate: 'opened', browser_snapshot: 'looked at the page',
-  browser_click: 'clicked', browser_select: 'chose an option in', browser_type: 'typed into', browser_find: 'searched for',
+  browser_click: 'clicked', browser_select: 'chose an option in', browser_upload_file: 'uploaded a file to', browser_type: 'typed into', browser_find: 'searched for',
   browser_read_text: 'read the page', browser_scroll: 'scrolled',
   browser_wait_for: 'waited for', browser_screenshot: 'took a screenshot',
   run_bash: 'ran', write_file: 'wrote', desktop_action: 'used the desktop',

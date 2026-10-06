@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><title>Test Login</title><h1>Sign in</h1>
+<form id=f><label>Username <input id=u name=username></label><br>
+<label>Password <input id=p name=password type=password></label><br><button>Sign in</button></form>
+<script>f.onsubmit=function(e){e.preventDefault();document.body.innerHTML=(u.value==='alfred'&&p.value==='eval-hunter2-SECRET')?'<h1>Welcome, alfred. Login OK</h1>':'<h1>Wrong username or password</h1>'}</script>

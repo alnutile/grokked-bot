@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["packages/*/src/**/*.ts", "scripts/**/*.mjs"]
+  "include": ["packages/*/src/**/*.ts", "packages/*/bin/**/*.ts", "packages/*/evals/**/*.ts", "packages/*/test/**/*.ts", "scripts/**/*.mjs"]
 }

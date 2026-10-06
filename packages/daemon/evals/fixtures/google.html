@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>Sign in - Google Accounts</title><h1>Sign in</h1><p>to continue to Acme Jobs</p>
+<div id=s1><label>Email or phone <input id=e type=email></label> <button id=n1>Next</button></div>
+<div id=s2 hidden><p id=who></p><label>Enter your password <input id=p type=password></label> <button id=n2>Next</button></div>
+<p id=err></p>
+<script>
+n1.onclick=()=>{ if(!e.value){err.textContent='Enter an email';return} s1.hidden=true; s2.hidden=false; who.textContent=e.value }
+n2.onclick=()=>{ if(e.value==='eval@gmail.com'&&p.value==='eval-g00gle-SECRET'){ window.opener.postMessage({ok:true,email:e.value},'*'); window.close() } else err.textContent='Wrong password. Try again.' }
+</script>

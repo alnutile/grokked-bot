@@ -1,0 +1,6 @@
+<!doctype html><meta charset="utf-8"><title>Acme Jobs - Sign in</title><h1>Sign in to Acme Jobs</h1>
+<p>We only support single sign-on.</p><button id=g>Continue with Google</button>
+<script>
+g.onclick=()=>window.open('http://127.0.0.1:8000/google.html','google','width=480,height=600')
+addEventListener('message',(e)=>{ if(e.data&&e.data.ok) document.body.innerHTML='<h1>Welcome, '+e.data.email+' - signed in with Google</h1>' })
+</script>

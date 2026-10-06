@@ -316,15 +316,29 @@ export class Session {
     return this.envelope({ image_base64: buf.toString('base64'), mime: 'image/jpeg', scope })
   }
 
+  /** Attach files to an upload control. Real sites hide the <input type=file>
+   *  behind a styled "Upload" button, so a ref to that button works too: we
+   *  click it and fill the file chooser it opens -- the native dialog, which
+   *  nothing could drive, never appears. */
   async upload_file({ ref, paths }) {
     for (const p of paths) {
       if (!p.startsWith(WORK_DIR)) {
         throw new Fail('path_not_allowed', `${p} is outside ${WORK_DIR}`)
       }
+      await stat(p).catch(() => { throw new Fail('no_such_file', `${p} does not exist; list_files or run_bash ls to find it`) })
     }
     const loc = await this.locate(ref)
-    await loc.setInputFiles(paths, { timeout: 20000 })
-    return this.envelope({ uploaded: paths })
+    const isFileInput = await loc.evaluate((el) => el instanceof HTMLInputElement && el.type === 'file').catch(() => false)
+    if (isFileInput) {
+      await loc.setInputFiles(paths, { timeout: 20000 })
+    } else {
+      const [chooser] = await Promise.all([
+        this.page().waitForEvent('filechooser', { timeout: 8000 }),
+        loc.click({ timeout: 10000 }),
+      ]).catch(() => { throw new Fail('no_file_chooser', `clicking ${ref} did not open a file chooser; snapshot and pick the upload button or file input`, 'snapshot') })
+      await chooser.setFiles(paths)
+    }
+    return this.envelope({ uploaded: paths.map((p) => p.split('/').pop()) })
   }
 
   // ------------------------------------------------------- the rest of Linux

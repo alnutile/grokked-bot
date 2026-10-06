@@ -311,6 +311,26 @@ prompt caching (which is the biggest cost lever still on the table).
 - **BYOK keys report `usage.cost: 0`**; real spend is in
   `cost_details.upstream_inference_cost`. Reading `cost` alone disables every budget cap.
 
+## Evals
+
+Ten everyday computer jobs, run against the real stack — daemon, bot computer, live
+websites — and graded automatically: FEC data, a dropdown inside an iframe, Wikipedia
+facts and a written briefing, Hacker News to CSV, Reddit, an Indeed search, signing in
+with a saved password, signing in with Google through a popup, and a job application
+form with a resume upload. Run them on every build, and to compare models:
+
+```bash
+pnpm eval                                  # the Settings worker model
+pnpm eval --model x-ai/grok-4.6            # any OpenRouter model
+pnpm eval --only wiki-fact,apply-form      # a subset
+```
+
+They use a dedicated **Eval** bot, so your bots' logins and conversations are untouched,
+and the test logins they create are deleted afterwards. Each run prints pass/fail, steps,
+cost and time per task, flags anything that regressed since the last run on that model,
+and saves the results to `~/.local/share/grokked/evals/`. The tasks and their checks live
+in `packages/daemon/evals/tasks.ts`; the local test pages in `evals/fixtures/`.
+
 ## Tests
 
 ```bash

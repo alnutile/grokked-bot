@@ -49,8 +49,11 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     db.prepare('SELECT * FROM runs WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1')
       .get(threadId) as (RunState & Record<string, unknown>) | undefined
 
+  /** Resume a run that was waiting on the human. The wait doesn't count against
+   *  its time limit: the clock restarts now, or replying after an hour away
+   *  would fail the run on the spot. */
   const requeue = (runId: string, botId: string) => {
-    db.prepare("UPDATE runs SET state='queued', state_reason=NULL WHERE id=?").run(runId)
+    db.prepare("UPDATE runs SET state='queued', state_reason=NULL, started_at=? WHERE id=?").run(Date.now(), runId)
     bus.emit({ topic: `run:${runId}`, type: 'run.state', run_id: runId, data: { run_id: runId, state: 'queued' } })
     drive(db, bus, botId, runId)
   }
@@ -276,7 +279,12 @@ export function reclaimOrphanedRuns(db: Db, bus: EventBus): number {
   for (const o of orphans) {
     db.prepare("UPDATE runs SET state='queued', crash_count=crash_count+1 WHERE id=?").run(o.id)
   }
+  // Re-queuing alone left them stranded: nothing drives a queued run but drive().
+  const stranded = db.prepare(
+    "SELECT id, bot_id FROM runs WHERE state = 'queued' AND crash_count < 3",
+  ).all() as Array<{ id: string; bot_id: string }>
   db.prepare("UPDATE runs SET state='failed', state_reason='suspected_crash_loop' WHERE state='queued' AND crash_count>=3").run()
-  if (orphans.length) log.warn({ count: orphans.length }, 'reclaimed runs orphaned by previous instance')
+  for (const o of stranded) drive(db, bus, o.bot_id, o.id)
+  if (stranded.length) log.warn({ count: stranded.length }, 'resumed runs left mid-flight by the previous instance')
   return orphans.length
 }

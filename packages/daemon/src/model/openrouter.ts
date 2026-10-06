@@ -9,9 +9,11 @@ export interface ToolDef {
   function: { name: string; description: string; parameters: unknown }
 }
 
+/** cache_control marks an Anthropic prompt-cache breakpoint (see withCacheBreakpoints). */
+type CacheMark = { cache_control?: { type: 'ephemeral' } }
 export type ContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } }
+  | ({ type: 'text'; text: string } & CacheMark)
+  | ({ type: 'image_url'; image_url: { url: string } } & CacheMark)
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -80,12 +82,50 @@ export interface ChatRequest {
   max_tokens?: number
 }
 
+/**
+ * Anthropic models only cache what the request marks; OpenAI and xAI cache a
+ * repeated prefix on their own. Without marks, Claude re-read every token at
+ * full price on every step (0% cached in our logs, against 63% for GPT), and a
+ * step is mostly re-reading: instructions, conversation, page.
+ *
+ * Two breakpoints: the system prompt (identical on every call) and the newest
+ * message, so each step reads everything before it from cache at a tenth of the
+ * price and writes only what's new.
+ */
+export function withCacheBreakpoints(model: string, messages: ChatMessage[]): ChatMessage[] {
+  if (!model.startsWith('anthropic/')) return messages
+  const mark = (m: ChatMessage): ChatMessage => {
+    if (typeof m.content === 'string' && m.content) {
+      return { ...m, content: [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }] }
+    }
+    if (Array.isArray(m.content) && m.content.length) {
+      const parts = [...m.content]
+      parts[parts.length - 1] = { ...parts[parts.length - 1]!, cache_control: { type: 'ephemeral' } }
+      return { ...m, content: parts }
+    }
+    return m
+  }
+  const out = [...messages]
+  const sys = out.findIndex((m) => m.role === 'system')
+  if (sys >= 0) out[sys] = mark(out[sys]!)
+  // The newest message that has text to hang a mark on (assistant turns that are
+  // only a tool call have none).
+  for (let i = out.length - 1; i > sys; i--) {
+    const marked = mark(out[i]!)
+    if (marked !== out[i]) { out[i] = marked; break }
+  }
+  return out
+}
+
+/** Longest we wait for one model call; a long tool-using answer takes well under a minute. */
+const CALL_TIMEOUT_MS = 150_000
+
 export async function chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResult> {
   if (!OPENROUTER_KEY) throw new ModelError('OPENROUTER_API_KEY is not set')
 
   const body: Record<string, unknown> = {
     model: req.model,
-    messages: req.messages,
+    messages: withCacheBreakpoints(req.model, req.messages),
     // Concurrent UI actions are a race condition, not a speedup.
     parallel_tool_calls: false,
     // Ask OpenRouter for real token counts and real cost rather than computing
@@ -115,12 +155,17 @@ export async function chat(req: ChatRequest, signal?: AbortSignal): Promise<Chat
       'X-Title': 'Grokked Bot',
     },
     body: JSON.stringify(body),
-    signal: signal ?? null,
+    // A provider can accept the request and never answer. Without a deadline that
+    // froze a run on one step indefinitely; timing out makes it a retry instead.
+    signal: signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS),
   }).catch((e: Error) => {
-    throw new ModelError(`network: ${e.message}`, undefined, true)
+    const timedOut = e.name === 'TimeoutError' || e.name === 'AbortError'
+    throw new ModelError(timedOut ? `no answer from ${req.model} in ${CALL_TIMEOUT_MS / 1000}s` : `network: ${e.message}`, undefined, true)
   })
 
-  const text = await res.text()
+  const text = await res.text().catch((e: Error) => {
+    throw new ModelError(`response cut off: ${e.message}`, undefined, true)
+  })
   if (!res.ok) {
     throw new ModelError(
       `openrouter ${res.status}: ${text.slice(0, 400)}`,

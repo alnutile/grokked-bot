@@ -88,6 +88,19 @@ export const TOOLS: Tool[] = [
     risk: 'medium', approval: 'never', replaySafe: false, run: passthrough('select'),
   },
   {
+    name: 'browser_upload_file',
+    description:
+      'Attach file(s) from your machine to an upload control: pass the ref of the "Upload"/"Attach resume" ' +
+      'button or of the file input itself. Files must be under /data/work (downloads land in ' +
+      '/data/work/downloads; files the human gives you are in /data/work/inbox). Never open the native file dialog.',
+    schema: S({
+      ref: z.string(),
+      element: z.string().describe('Name of the upload control, in plain words.'),
+      paths: z.array(z.string()).min(1).describe('Absolute paths under /data/work.'),
+    }),
+    risk: 'medium', approval: 'never', replaySafe: false, run: passthrough('upload_file'),
+  },
+  {
     name: 'browser_find',
     description:
       'Search the WHOLE page (including parts a long snapshot left out) for elements whose text matches, and ' +

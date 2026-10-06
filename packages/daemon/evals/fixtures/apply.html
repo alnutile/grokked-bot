@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>Apply - Senior Laravel Developer</title>
+<style>body{font-family:sans-serif;max-width:640px;margin:2em auto} label{display:block;margin:.8em 0}
+#pick{display:inline-block;padding:.5em 1em;background:#2557d6;color:#fff;border-radius:6px;cursor:pointer}
+#resume{display:none}</style>
+<h1>Senior Laravel Developer</h1><p>Acme Corp · Remote</p>
+<form id=f>
+  <label>Full name <input id=fullname required></label>
+  <label>Email <input id=email type=email required></label>
+  <label>Country <select id=country required><option value="">Choose…</option><option>United States</option><option>Canada</option><option>United Kingdom</option><option>Germany</option></select></label>
+  <label>Years of Laravel experience <input id=years type=number min=0 required></label>
+  <div>Resume <span id=pick role=button tabindex=0>Upload resume</span> <span id=chosen>No file chosen</span><input id=resume type=file accept=".pdf,.docx"></div>
+  <label><input id=agree type=checkbox required> I agree to the privacy policy</label>
+  <button>Submit application</button>
+  <p id=err style="color:#b00"></p>
+</form>
+<script>
+pick.onclick=()=>resume.click()
+resume.onchange=()=>{ chosen.textContent=resume.files[0]?resume.files[0].name:'No file chosen' }
+f.onsubmit=(e)=>{ e.preventDefault()
+  const file=resume.files[0]
+  if(!file){ err.textContent='Please upload your resume.'; return }
+  document.body.innerHTML='<h1>Application received</h1><p>Name: '+fullname.value+'</p><p>Email: '+email.value+'</p><p>Country: '+country.value+
+    '</p><p>Experience: '+years.value+' years</p><p>Resume: '+file.name+' ('+file.size+' bytes)</p><p>Privacy policy accepted: '+(agree.checked?'yes':'no')+'</p>' }
+</script>
