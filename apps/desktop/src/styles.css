@@ -306,3 +306,13 @@ button { font: inherit; }
 .key-row input { flex: 1; min-width: 0; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
                  border-radius: 8px; padding: 7px 10px; font: inherit; }
 .key-row input:focus { outline: none; border-color: var(--accent); }
+
+/* ---------- mascot ---------- */
+.mascot { flex: none; }
+.mascot-working .mascot-body { animation: mascot-bob 1.6s ease-in-out infinite; }
+.mascot-working .mascot-caret { animation: mascot-blink 1s steps(1) infinite; }
+@keyframes mascot-bob { 50% { transform: translateY(-2px); } }
+@keyframes mascot-blink { 50% { opacity: 0; } }
+.setup h1 { text-align: center; }
+.setup-intro { text-align: center; line-height: 1.55; font-size: 13.5px; }
+.steps li p.why { color: var(--text); opacity: .8; }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-daemon-token"
+description = "Enables the daemon_token command without any pre-configured scope."
+commands.allow = ["daemon_token"]
+
+[[permission]]
+identifier = "deny-daemon-token"
+description = "Denies the daemon_token command without any pre-configured scope."
+commands.deny = ["daemon_token"]

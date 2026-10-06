@@ -1,0 +1,25 @@
+<!-- App icon: the Mascot (src/components/Mascot.tsx) on a macOS-style tile.
+     Regenerate every size with: pnpm tauri icon src-tauri/icons/icon.svg -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#20242c"/>
+      <stop offset="1" stop-color="#101216"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" fill="none" stroke="#ffffff" stroke-opacity=".08"/>
+  <g transform="translate(160 150) scale(11)">
+    <path d="M15 31 C15 17 22 10 32 10 C42 10 49 17 49 31 Z" fill="#5b8cff"/>
+    <ellipse cx="27" cy="22" rx="2.4" ry="3.6" fill="#141414"/>
+    <ellipse cx="37" cy="22" rx="2.4" ry="3.6" fill="#141414"/>
+    <rect x="8" y="29" width="48" height="27" rx="5" fill="#3a404b"/>
+    <rect x="12" y="33" width="40" height="19" rx="2.5" fill="#0b0c0e"/>
+    <path d="M17 38.5 L21 42 L17 45.5" stroke="#5b8cff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="23.5" y="44" width="6" height="2" rx="1" fill="#5b8cff"/>
+    <circle cx="20" cy="30" r="3.4" fill="#5b8cff"/>
+    <circle cx="44" cy="30" r="3.4" fill="#5b8cff"/>
+    <rect x="28.5" y="56" width="7" height="3.5" fill="#3a404b"/>
+    <rect x="22" y="59" width="20" height="3" rx="1.5" fill="#3a404b"/>
+  </g>
+</svg>

@@ -6,6 +6,7 @@ import { BotPanel } from './components/BotPanel.tsx'
 import { Avatar } from './components/Avatar.tsx'
 import { Settings } from './components/Settings.tsx'
 import { Setup, setupDone } from './components/Setup.tsx'
+import { Mascot } from './components/Mascot.tsx'
 
 export default function App() {
   const [bots, setBots] = useState<Bot[]>([])
@@ -20,34 +21,57 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [frames, setFrames] = useState<Frame[]>([])
   const [conn, setConn] = useState<'up' | 'down'>('down')
-  const [boot, setBoot] = useState<string | null>('connecting…')
+  const [boot, setBoot] = useState<string | null>('Starting up…')
+  const [bootFailed, setBootFailed] = useState(false)
+  const [bootAttempt, setBootAttempt] = useState(0)
+  const [bootBusy, setBootBusy] = useState(false)
   const [logs, setLogs] = useState<string | null>(null)
   const [credit, setCredit] = useState<number | null>(null)
   const [system, setSystem] = useState<SystemStatus | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     void (async () => {
-      try {
-        await initToken()
-        await api.health()
-        setSystem(await api.system())
-        const [list, convs] = await Promise.all([api.bots(), api.threads()])
-        setBots(list)
-        setThreads(convs)
-        const first = convs[0]
-        setActive(first?.bot_id ?? list[0]?.id ?? null)
-        setThreadId(first?.id ?? null)
-        setBoot(null)
-      } catch {
-        // Debugging a daemon you cannot see is miserable, so say what is wrong
-        // and offer to start it rather than showing a dead screen.
-        const st = await invoke<{ unit_active: boolean }>('daemon_status').catch(() => ({ unit_active: true }))
-        setBoot(st.unit_active
-          ? 'The daemon is running but not answering on 127.0.0.1:8787.'
-          : 'The daemon is not running. Your bots are not working.')
+      // On a Mac the app starts the daemon itself, so it may still be booting
+      // (creating its token, running migrations) on the first try. Keep trying
+      // for a bit before calling it broken.
+      let last: unknown = null
+      for (let i = 0; i < 20 && !cancelled; i++) {
+        try {
+          await initToken()
+          await api.health()
+          setSystem(await api.system())
+          const [list, convs] = await Promise.all([api.bots(), api.threads()])
+          if (cancelled) return
+          setBots(list)
+          setThreads(convs)
+          const first = convs[0]
+          setActive(first?.bot_id ?? list[0]?.id ?? null)
+          setThreadId(first?.id ?? null)
+          setBoot(null)
+          return
+        } catch (e) {
+          last = e
+          await new Promise((r) => setTimeout(r, 1000))
+        }
       }
+      if (cancelled) return
+      // Debugging a daemon you cannot see is miserable, so say what is wrong
+      // and offer to start it rather than showing a dead screen. Never guess:
+      // if even asking the app fails, show that error.
+      try {
+        const st = await invoke<{ unit_active: boolean; error: string | null }>('daemon_status')
+        setBoot(st.error
+          ?? (st.unit_active
+            ? `The daemon is running but not answering on 127.0.0.1:8787 (${String(last)}).`
+            : 'The daemon is not running, so your bots are not working.'))
+      } catch (e) {
+        setBoot(`The app couldn't check on its daemon: ${String(e)}`)
+      }
+      setBootFailed(true)
     })()
-  }, [])
+    return () => { cancelled = true }
+  }, [bootAttempt])
 
   useEffect(() => {
     if (boot) return
@@ -93,18 +117,28 @@ export default function App() {
   }, [boot])
 
   if (boot) {
+    const retry = () => { setBoot('Starting up…'); setBootFailed(false); setLogs(null); setBootAttempt((n) => n + 1) }
     return (
       <div className="boot">
+        <Mascot size={112} mood={bootFailed ? 'stuck' : 'working'} />
         <h1>Grokked Bot</h1>
         <p className="boot-msg">{boot}</p>
-        <div className="boot-actions">
-          <button className="btn" onClick={() => invoke('start_daemon').then(() => location.reload())}>
-            Start daemon
-          </button>
-          <button className="btn btn-ghost" onClick={() => invoke<string>('daemon_logs').then(setLogs)}>
-            Show logs
-          </button>
-        </div>
+        {bootFailed && (
+          <div className="boot-actions">
+            <button className="btn" disabled={bootBusy} onClick={async () => {
+              setBootBusy(true)
+              try { await invoke('start_daemon'); retry() }
+              catch (e) { setBoot(`Couldn't start the daemon: ${String(e)}`) }
+              finally { setBootBusy(false) }
+            }}>
+              {bootBusy ? 'Starting…' : 'Start daemon'}
+            </button>
+            <button className="btn btn-ghost" onClick={() =>
+              invoke<string>('daemon_logs').then((l) => setLogs(l.trim() || '(the log is empty)')).catch((e) => setLogs(`Couldn't read the logs: ${String(e)}`))}>
+              Show logs
+            </button>
+          </div>
+        )}
         {logs && <pre className="logs">{logs}</pre>}
       </div>
     )

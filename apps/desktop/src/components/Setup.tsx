@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { api, type SystemStatus } from '../api.ts'
+import { Mascot } from './Mascot.tsx'
 
 /** Everything a bot needs that the app can't ship inside itself. */
 export const setupDone = (s: SystemStatus) =>
@@ -29,12 +30,18 @@ export function Setup({ status, onChange }: { status: SystemStatus; onChange: (s
 
   return (
     <div className="boot setup">
-      <h1>Set up Grokked Bot</h1>
-      <p className="boot-msg">Each bot gets its own computer, a Linux desktop that runs in Docker on this machine.</p>
+      <Mascot size={104} mood={status.image_state === 'pulling' ? 'working' : 'idle'} />
+      <h1>Hi! Let's get your bot its own computer.</h1>
+      <p className="boot-msg setup-intro">
+        Your bots don't work on your {mac ? 'Mac' : 'desktop'} directly. Each one gets a private computer of its
+        own, a small Linux desktop with Chrome and a terminal, running quietly in the background. You can watch
+        it work and take over the mouse any time. Three things and you're set:
+      </p>
 
       <ol className="steps">
         <li className={dockerOk ? 'done' : 'todo'}>
-          <strong>Docker</strong>
+          <strong>1. Docker</strong>
+          <p className="why">The engine that runs your bots' computers.</p>
           {status.docker === 'missing' && <>
             <p>{mac
               ? 'Install Docker Desktop (or OrbStack), open it once, then come back here.'
@@ -51,7 +58,8 @@ export function Setup({ status, onChange }: { status: SystemStatus; onChange: (s
         </li>
 
         <li className={status.image_state === 'present' ? 'done' : 'todo'}>
-          <strong>Bot computer</strong>
+          <strong>2. The bot's computer</strong>
+          <p className="why">A ready-made desktop your bots share as a template. Downloaded once.</p>
           {!dockerOk && <p className="hint">Needs Docker first.</p>}
           {dockerOk && (status.image_state === 'missing' || status.image_state === 'failed') && <>
             <p>A one-time download of about 5 GB.</p>
@@ -61,18 +69,19 @@ export function Setup({ status, onChange }: { status: SystemStatus; onChange: (s
             </button>
           </>}
           {status.image_state === 'pulling' && <>
-            <p><span className="dot" /> Downloading… you can leave this open.</p>
+            <p><span className="dot" /> Downloading… this can take 10 minutes or so. Leave this window open.</p>
             {status.pull_progress && <p className="hint mono">{status.pull_progress}</p>}
           </>}
           {status.image_state === 'present' && <p>Ready.</p>}
         </li>
 
         <li className={status.openrouter_key ? 'done' : 'todo'}>
-          <strong>OpenRouter key</strong>
+          <strong>3. An OpenRouter key</strong>
+          <p className="why">How your bots think. Usage is billed to your OpenRouter account.</p>
           {status.openrouter_key
             ? <p>Saved.</p>
             : <>
-                <p>Bots think with models from OpenRouter, billed to your account.{' '}
+                <p>Paste a key from OpenRouter.{' '}
                   <a href="#" onClick={(e) => { e.preventDefault(); void open('https://openrouter.ai/settings/keys') }}>Create a key</a>.
                 </p>
                 <form className="key-row" onSubmit={async (e) => {
