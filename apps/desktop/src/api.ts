@@ -7,7 +7,10 @@ let TOKEN = ''
 export async function initToken(): Promise<void> {
   try {
     TOKEN = await invoke<string>('daemon_token')
-  } catch {
+  } catch (e) {
+    // Inside the app this is a real failure (no token file yet, or the IPC call
+    // itself refused), so say which instead of the browser-mode hint below.
+    if (inTauri()) throw new Error(`could not read the daemon token: ${String(e)}`)
     // Not running inside Tauri (plain browser, `pnpm dev`). Accept ?token= so the
     // UI can be iterated on without a 46s Rust rebuild each time.
     const q = new URLSearchParams(location.search).get('token')

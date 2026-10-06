@@ -1,4 +1,4 @@
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// Where the daemon keeps its token. Must match CONFIG_DIR in
 /// packages/daemon/src/config.ts.
@@ -53,6 +53,9 @@ mod daemon {
 
     pub fn start_on_launch(_app: &tauri::AppHandle) {}
     pub fn stop(_app: &tauri::AppHandle) {}
+    pub fn last_error(_app: &tauri::AppHandle) -> Option<String> {
+        None
+    }
 }
 
 /// macOS has no systemd, and an office Mac user shouldn't have to install a
@@ -94,6 +97,12 @@ mod daemon {
         if is_running(app) {
             return Ok(());
         }
+        let r = spawn(app);
+        *START_ERROR.lock().unwrap() = r.as_ref().err().cloned();
+        r
+    }
+
+    fn spawn(app: &tauri::AppHandle) -> Result<(), String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let node = exe.parent().ok_or("no exe dir")?.join("node");
         let script = app
@@ -150,6 +159,19 @@ mod daemon {
         }
     }
 
+    /// Why the daemon isn't up, when we know: it failed to spawn, or it spawned
+    /// and exited (the log tail says why). None while it's running.
+    pub fn last_error(app: &tauri::AppHandle) -> Option<String> {
+        let state = app.state::<Proc>();
+        let mut guard = state.0.lock().unwrap();
+        match guard.as_mut().map(|c| c.try_wait()) {
+            Some(Ok(Some(status))) => Some(format!("The daemon exited ({status}). Show logs for why.")),
+            _ => START_ERROR.lock().unwrap().clone(),
+        }
+    }
+
+    static START_ERROR: Mutex<Option<String>> = Mutex::new(None);
+
     /// SIGTERM, not kill(): the daemon checkpoints SQLite's WAL on the way out.
     pub fn stop(app: &tauri::AppHandle) {
         if let Some(mut c) = app.state::<Proc>().0.lock().unwrap().take() {
@@ -167,7 +189,10 @@ mod daemon {
 
 #[tauri::command]
 fn daemon_status(app: tauri::AppHandle) -> serde_json::Value {
-    serde_json::json!({ "unit_active": daemon::is_running(&app) })
+    serde_json::json!({
+        "unit_active": daemon::is_running(&app),
+        "error": daemon::last_error(&app),
+    })
 }
 
 #[tauri::command]
@@ -219,6 +244,29 @@ pub fn run() {
                     .parse()
                     .unwrap()
             } else {
+                // A page served from http://localhost is a *remote* origin to
+                // Tauri, and remote origins get no IPC unless a capability names
+                // them. Without this every invoke() fails in release builds only
+                // (dev's URL is the configured devUrl, which counts as local), so
+                // the token lookup and the Start daemon / Show logs buttons all
+                // silently did nothing. Same permissions as capabilities/main.json.
+                let mut cap = tauri::ipc::CapabilityBuilder::new("localhost")
+                    .remote(format!("http://localhost:{port}/*"))
+                    .window("main");
+                for p in [
+                    "core:default",
+                    "opener:default",
+                    "notification:default",
+                    "clipboard-manager:allow-read-text",
+                    "clipboard-manager:allow-write-text",
+                    "allow-daemon-token",
+                    "allow-daemon-status",
+                    "allow-start-daemon",
+                    "allow-daemon-logs",
+                ] {
+                    cap = cap.permission(p);
+                }
+                app.add_capability(cap)?;
                 format!("http://localhost:{port}/index.html").parse().unwrap()
             };
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))

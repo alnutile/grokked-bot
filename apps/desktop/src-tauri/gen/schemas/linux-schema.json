@@ -345,6 +345,54 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the daemon_logs command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-daemon-logs",
+          "markdownDescription": "Enables the daemon_logs command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the daemon_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-daemon-status",
+          "markdownDescription": "Enables the daemon_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the daemon_token command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-daemon-token",
+          "markdownDescription": "Enables the daemon_token command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start_daemon command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-daemon",
+          "markdownDescription": "Enables the start_daemon command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the daemon_logs command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-daemon-logs",
+          "markdownDescription": "Denies the daemon_logs command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the daemon_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-daemon-status",
+          "markdownDescription": "Denies the daemon_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the daemon_token command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-daemon-token",
+          "markdownDescription": "Denies the daemon_token command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_daemon command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-daemon",
+          "markdownDescription": "Denies the start_daemon command without any pre-configured scope."
+        },
+        {
           "description": "No features are enabled by default, as we believe\nthe clipboard can be inherently dangerous and it is \napplication specific if read and/or write access is needed.\n\nClipboard interaction needs to be explicitly enabled.\n",
           "type": "string",
           "const": "clipboard-manager:default",
