@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
+export const IS_MAC = process.platform === 'darwin'
+
 const xdg = (envVar: string, fallback: string) =>
   process.env[envVar] && process.env[envVar]!.startsWith('/')
     ? process.env[envVar]!
@@ -11,19 +13,54 @@ const xdg = (envVar: string, fallback: string) =>
 export const VERSION = '0.1.0'
 export const INSTANCE_ID = `inst_${randomUUID().replaceAll('-', '').slice(0, 16)}`
 
-export const CONFIG_DIR = join(xdg('XDG_CONFIG_HOME', '.config'), 'grokked')
-export const DATA_DIR = join(xdg('XDG_DATA_HOME', '.local/share'), 'grokked')
-export const RUNTIME_DIR = join(process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 1000}`, 'grokked')
+// macOS has no XDG dirs and no /run/user. Everything lives under Application
+// Support there; the desktop app reads the token from the same place, so keep
+// these in sync with apps/desktop/src-tauri/src/lib.rs.
+const MAC_DIR = join(homedir(), 'Library', 'Application Support', 'Grokked')
+
+export const CONFIG_DIR = IS_MAC ? MAC_DIR : join(xdg('XDG_CONFIG_HOME', '.config'), 'grokked')
+export const DATA_DIR = IS_MAC ? MAC_DIR : join(xdg('XDG_DATA_HOME', '.local/share'), 'grokked')
+export const RUNTIME_DIR = IS_MAC
+  ? join(MAC_DIR, 'run')
+  : join(process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 1000}`, 'grokked')
 
 export const DB_PATH = process.env.GROKKED_DB ?? join(DATA_DIR, 'grokked.db')
 export const BLOB_DIR = join(DATA_DIR, 'blobs')
 export const TOKEN_PATH = join(CONFIG_DIR, 'token')
 export const DISCOVERY_PATH = join(RUNTIME_DIR, 'daemon.json')
 
-export const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY ?? ''
+export const ENV_PATH = join(CONFIG_DIR, 'env')
+
+// systemd loads the env file for us on Linux. When the desktop app launches the
+// daemon on macOS nothing does, so read it here. Values already in the
+// environment win.
+if (existsSync(ENV_PATH)) {
+  try { process.loadEnvFile(ENV_PATH) } catch { /* malformed: fall through to the setup screen */ }
+}
+
+export let OPENROUTER_KEY = process.env.OPENROUTER_API_KEY ?? ''
 export const OPENROUTER_URL = process.env.OPENROUTER_URL ?? 'https://openrouter.ai/api/v1'
-export const DOCKER_HOST_SOCK =
-  process.env.DOCKER_HOST ?? `unix:///run/user/${process.getuid?.() ?? 1000}/docker.sock`
+
+/** Set from the app's setup screen. Persisted to the env file so systemd (Linux)
+ *  and the app-launched daemon (macOS) both pick it up on the next start. */
+export function setOpenRouterKey(key: string): void {
+  OPENROUTER_KEY = key
+  process.env.OPENROUTER_API_KEY = key
+  const lines = existsSync(ENV_PATH)
+    ? readFileSync(ENV_PATH, 'utf8').split('\n').filter((l) => l && !l.startsWith('OPENROUTER_API_KEY='))
+    : []
+  lines.push(`OPENROUTER_API_KEY=${key}`)
+  writeFileSync(ENV_PATH, lines.join('\n') + '\n', { mode: 0o600 })
+}
+
+/** Rootless Docker on Linux. On macOS, leave it unset so the docker CLI uses its
+ *  current context (Docker Desktop, OrbStack, Colima all set one). */
+export const DOCKER_HOST_SOCK: string | undefined =
+  process.env.DOCKER_HOST ?? (IS_MAC ? undefined : `unix:///run/user/${process.getuid?.() ?? 1000}/docker.sock`)
+
+/** The bot's computer. Pulled from the registry on first run; on Linux you can
+ *  still build it locally with container/build.sh and point this at the tag. */
+export const COMPUTER_IMAGE = process.env.GROKKED_IMAGE ?? 'ghcr.io/alnutile/grokked-computer:0.1'
 
 export interface ModelRoles {
   planner: string

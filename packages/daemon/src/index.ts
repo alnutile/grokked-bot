@@ -11,6 +11,7 @@ import { mountRuns, reclaimOrphanedRuns } from './http/runs.ts'
 import { mountBots } from './http/bots.ts'
 import { mountSettings } from './http/settings.ts'
 import { backfillTitles } from './agent/titles.ts'
+import { mountSystem } from './http/system.ts'
 import { loadConfig } from './config.ts'
 import { validateModels } from './model/openrouter.ts'
 import { log } from './log.ts'
@@ -26,6 +27,7 @@ const app = createApp({ db, bus, token, startedAt })
 mountBots(app, db)
 mountSettings(app, db)
 mountRuns(app, db, bus)
+mountSystem(app)
 reclaimOrphanedRuns(db, bus)
 backfillTitles(db, bus)
 void validateModels(Object.values(loadConfig().models))

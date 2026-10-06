@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { api, connect, initToken, subscribe, type Bot, type Frame, type ThreadSummary } from './api.ts'
+import { api, connect, initToken, subscribe, type Bot, type Frame, type ThreadSummary, type SystemStatus } from './api.ts'
 import { Thread } from './components/Thread.tsx'
 import { BotPanel } from './components/BotPanel.tsx'
 import { Avatar } from './components/Avatar.tsx'
 import { Settings } from './components/Settings.tsx'
+import { Setup, setupDone } from './components/Setup.tsx'
 
 export default function App() {
   const [bots, setBots] = useState<Bot[]>([])
@@ -22,12 +23,14 @@ export default function App() {
   const [boot, setBoot] = useState<string | null>('connecting…')
   const [logs, setLogs] = useState<string | null>(null)
   const [credit, setCredit] = useState<number | null>(null)
+  const [system, setSystem] = useState<SystemStatus | null>(null)
 
   useEffect(() => {
     void (async () => {
       try {
         await initToken()
         await api.health()
+        setSystem(await api.system())
         const [list, convs] = await Promise.all([api.bots(), api.threads()])
         setBots(list)
         setThreads(convs)
@@ -106,6 +109,8 @@ export default function App() {
       </div>
     )
   }
+
+  if (system && !setupDone(system)) return <Setup status={system} onChange={setSystem} />
 
   return (
     <div className="app">

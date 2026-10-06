@@ -1,10 +1,8 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-import { DOCKER_HOST_SOCK } from '../config.ts'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { DATA_DIR } from '../config.ts'
 import { log } from '../log.ts'
-
-const exec = promisify(execFile)
-const env = { ...process.env, DOCKER_HOST: DOCKER_HOST_SOCK }
+import { IMAGE_PLATFORM, computerImage, docker } from './docker.ts'
 
 export interface ActResult { ok: boolean; [k: string]: unknown }
 
@@ -24,9 +22,9 @@ export interface BotRuntime {
 export class LocalDockerRuntime implements BotRuntime {
   // Node's strip-only TS mode rejects parameter properties, so fields are explicit.
   readonly name: string
-  readonly image: string
+  readonly image: string | undefined
 
-  constructor(name: string, image = 'grokked/computer:0.1') {
+  constructor(name: string, image?: string) {
     this.name = name
     this.image = image
   }
@@ -40,7 +38,7 @@ export class LocalDockerRuntime implements BotRuntime {
     const stale = running !== null && await this.#staleReason()
     if (stale) {
       log.info({ bot: this.name, reason: stale }, 'recreating bot computer')
-      await exec('docker', ['rm', '-f', this.name], { env })
+      await docker(['rm', '-f', this.name])
       running = null
     }
 
@@ -48,26 +46,29 @@ export class LocalDockerRuntime implements BotRuntime {
 
     if (running === null) {
       log.info({ bot: this.name }, 'creating bot computer')
-      await exec('docker', [
-        'run', '-d', '--name', this.name,
+      const work = join(DATA_DIR, 'bots', this.name, 'work')
+      // Create it ourselves: if Docker does, it may end up owned by root.
+      mkdirSync(work, { recursive: true, mode: 0o700 })
+      await docker([
+        'run', '-d', '--name', this.name, '--platform', IMAGE_PLATFORM,
         '-v', `${this.name}-profile:/data/profile`,
-        '-v', `${process.env.HOME}/.local/share/grokked/bots/${this.name}/work:/data/work`,
+        '-v', `${work}:/data/work`,
         '--shm-size=2g', '--memory=6g', '--cpus=3', '--pids-limit=1024',
         '--security-opt', 'no-new-privileges',
         '-p', '127.0.0.1::6080',
         '-p', '127.0.0.1::8088',
-        this.image,
-      ], { env })
+        this.image ?? await computerImage(),
+      ])
     } else {
       log.info({ bot: this.name, state: running }, 'starting existing bot computer')
-      await exec('docker', ['start', this.name], { env })
+      await docker(['start', this.name])
     }
     await this.#waitHealthy()
   }
 
   async #state(): Promise<string | null> {
     try {
-      const { stdout } = await exec('docker', ['inspect', '-f', '{{.State.Status}}', this.name], { env })
+      const { stdout } = await docker(['inspect', '-f', '{{.State.Status}}', this.name])
       return stdout.trim()
     } catch {
       return null
@@ -75,11 +76,11 @@ export class LocalDockerRuntime implements BotRuntime {
   }
 
   async #staleReason(): Promise<string | null> {
-    const { stdout } = await exec('docker', ['inspect', '-f', '{{.Image}} {{json .HostConfig.PortBindings}}', this.name], { env })
+    const { stdout } = await docker(['inspect', '-f', '{{.Image}} {{json .HostConfig.PortBindings}}', this.name])
     const [imageId, json] = [stdout.slice(0, stdout.indexOf(' ')), stdout.slice(stdout.indexOf(' ') + 1)]
     const bindings = JSON.parse(json) as Record<string, Array<{ HostPort: string }>> | null
     if (Object.values(bindings ?? {}).some((bs) => bs.some((b) => b.HostPort !== ''))) return 'pinned ports'
-    const current = await exec('docker', ['image', 'inspect', '-f', '{{.Id}}', this.image], { env })
+    const current = await docker(['image', 'inspect', '-f', '{{.Id}}', this.image ?? await computerImage()])
       .then((r) => r.stdout.trim()).catch(() => null)
     if (current && current !== imageId) return 'newer image'
     return null
@@ -89,7 +90,7 @@ export class LocalDockerRuntime implements BotRuntime {
    *  may pick new ones on every start, so they're looked up rather than cached. */
   async ports(): Promise<{ shim: number; vnc: number }> {
     const port = async (p: number) => {
-      const { stdout } = await exec('docker', ['port', this.name, `${p}/tcp`], { env })
+      const { stdout } = await docker(['port', this.name, `${p}/tcp`])
       return Number(stdout.trim().split('\n')[0]!.split(':').pop())
     }
     const [vnc, shim] = await Promise.all([port(6080), port(8088)])
@@ -155,7 +156,7 @@ export class LocalDockerRuntime implements BotRuntime {
    *  still needs it to connect without prompting the human every time. */
   async vncPassword(): Promise<string | null> {
     try {
-      const { stdout } = await exec('docker', ['exec', this.name, 'cat', '/data/profile/.vncpasswd.txt'], { env })
+      const { stdout } = await docker(['exec', this.name, 'cat', '/data/profile/.vncpasswd.txt'])
       return stdout.trim() || null
     } catch {
       return null

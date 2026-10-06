@@ -4,3 +4,5 @@ dist/
 apps/desktop/local-deps/
 apps/desktop/src-tauri/target/
 .env
+apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/resources/daemon/
