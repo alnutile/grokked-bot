@@ -3,14 +3,16 @@ import { api, type Bot, type BotFile } from '../api.ts'
 import { Avatar, look } from './Avatar.tsx'
 import { ComputerPanel } from './ComputerPanel.tsx'
 import { ModelPicker } from './Settings.tsx'
+import { Triggers } from './Triggers.tsx'
 
-type Tab = 'details' | 'media' | 'computer'
+type Tab = 'details' | 'triggers' | 'media' | 'computer'
 
 /** The bot itself: who it is, what it has made, and its live computer. */
-export function BotPanel({ bot, initialTab = 'computer', onChange }: {
+export function BotPanel({ bot, initialTab = 'computer', onChange, onOpenThread }: {
   bot: Bot
   initialTab?: Tab
   onChange: (b: Bot) => void
+  onOpenThread: (threadId: string) => void
 }) {
   const [tab, setTab] = useState<Tab>(initialTab)
   const [pendingTakeover, setPendingTakeover] = useState(false)
@@ -30,7 +32,7 @@ export function BotPanel({ bot, initialTab = 'computer', onChange }: {
         <div className="profile-name">{bot.name}</div>
         <div className="profile-desc">{bot.description || <span className="dim">No description yet</span>}</div>
         <div className="tabs">
-          {(['details', 'media', 'computer'] as const).map((t) => (
+          {(['details', 'triggers', 'media', 'computer'] as const).map((t) => (
             <button key={t} className={`tab ${tab === t ? 'tab-on' : ''}`} onClick={() => setTab(t)}>
               {t[0]!.toUpperCase() + t.slice(1)}
             </button>
@@ -39,6 +41,7 @@ export function BotPanel({ bot, initialTab = 'computer', onChange }: {
       </div>
       <div className="tab-body">
         {tab === 'details' && <Details bot={bot} onChange={onChange} />}
+        {tab === 'triggers' && <Triggers bot={bot} onOpenThread={onOpenThread} />}
         {tab === 'media' && <Media bot={bot} />}
         {tab === 'computer' && (
           <ComputerPanel botId={bot.id} name={bot.name}

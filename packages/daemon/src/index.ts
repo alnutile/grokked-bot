@@ -1,7 +1,7 @@
 import { unlinkSync, writeFileSync, renameSync } from 'node:fs'
 import { serve } from '@hono/node-server'
 import {
-  DB_PATH, DISCOVERY_PATH, HOST, INSTANCE_ID, PORT, VERSION,
+  DB_PATH, DISCOVERY_PATH, HOOKS_HOST, HOOKS_PORT, HOST, INSTANCE_ID, PORT, VERSION,
   ensureDirs, loadOrCreateToken,
 } from './config.ts'
 import { openDb } from './db/index.ts'
@@ -10,6 +10,10 @@ import { createApp } from './http/app.ts'
 import { mountRuns, reclaimOrphanedRuns } from './http/runs.ts'
 import { mountBots } from './http/bots.ts'
 import { mountSettings } from './http/settings.ts'
+import { mountTriggers } from './http/triggers.ts'
+import { createHooksApp } from './http/hooks.ts'
+import { drive } from './http/runs.ts'
+import { startScheduler } from './triggers.ts'
 import { backfillTitles } from './agent/titles.ts'
 import { loadConfig } from './config.ts'
 import { validateModels } from './model/openrouter.ts'
@@ -26,6 +30,7 @@ const app = createApp({ db, bus, token, startedAt })
 mountBots(app, db)
 mountSettings(app, db)
 mountRuns(app, db, bus)
+mountTriggers(app, db, bus)
 reclaimOrphanedRuns(db, bus)
 backfillTitles(db, bus)
 void validateModels(Object.values(loadConfig().models))
@@ -37,6 +42,13 @@ const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) =>
 })
 
 const wss = attachWs(server as unknown as import('node:http').Server, bus, token)
+
+// Webhooks get their own listener with nothing else on it -- this is the port
+// Tailscale (or your own tunnel) exposes. Schedules fire from the same process.
+const hooksServer = serve({ fetch: createHooksApp(db, bus).fetch, hostname: HOOKS_HOST, port: HOOKS_PORT }, (info) => {
+  log.info({ host: HOOKS_HOST, port: info.port }, 'webhook listener up')
+})
+const stopScheduler = startScheduler(db, bus, (botId, runId) => drive(db, bus, botId, runId))
 
 // Retention sweep. Clients asking for a `since` older than this get
 // hello{dropped:true} and do a full refetch instead of silently missing frames.
@@ -75,6 +87,8 @@ function shutdown(signal: string): void {
   shuttingDown = true
   log.info({ signal }, 'shutting down')
   clearInterval(prune)
+  stopScheduler()
+  hooksServer.close()
   wss.close()
   server.close(() => {
     try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)') } catch { /* best effort */ }

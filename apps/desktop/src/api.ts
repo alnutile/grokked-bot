@@ -42,6 +42,8 @@ export interface Bot {
 
 export interface ThreadSummary {
   id: string; bot_id: string; title: string | null; preview: string | null
+  /** 'trigger' = a webhook's or schedule's own conversation. */
+  kind: string
   state: string | null; last_message_at: number
 }
 
@@ -60,6 +62,21 @@ export interface Credential {
   via_credential_id: string
 }
 export type CredentialInput = Partial<Pick<Credential, 'label' | 'url' | 'username' | 'notes' | 'bot_ids' | 'sign_in_with' | 'via_credential_id'>> & { password?: string }
+
+export interface Trigger {
+  id: string; bot_id: string; kind: 'webhook' | 'cron'; name: string; instruction: string
+  cron?: string; tz?: string; public: boolean; enabled: boolean
+  next_fire_at: number | null; last_fire_at: number | null; last_run_id: string | null
+  last_run_state: string | null; thread_id: string | null; allowed_domains: string[]
+  max_usd: number | null; fire_count: number; created_at: number
+}
+export type TriggerInput = Partial<Pick<Trigger, 'kind' | 'name' | 'instruction' | 'cron' | 'tz' | 'public' | 'enabled' | 'allowed_domains' | 'max_usd'>>
+
+export interface RemoteStatus {
+  installed: boolean; logged_in: boolean; login_url?: string; dns_name?: string
+  serving: boolean; funnel: boolean; hooks_port: number
+  tailnet_base?: string; public_base?: string; local_base: string
+}
 
 export interface BotFile { path: string; abs: string; size: number; mtime: number }
 /** A chat line rebuilt by the daemon from SQLite. */
@@ -139,6 +156,17 @@ export const api = {
     req<{ text: string }>(`/v1/bots/${botId}/clipboard`).then((r) => r.text),
   setBotClipboard: (botId: string, text: string, paste = false) =>
     req(`/v1/bots/${botId}/clipboard`, { method: 'POST', body: JSON.stringify({ text, paste }) }),
+  triggers: (botId: string) => req<{ triggers: Trigger[] }>(`/v1/bots/${botId}/triggers`).then((r) => r.triggers),
+  createTrigger: (botId: string, t: TriggerInput) =>
+    req<{ trigger: Trigger; token?: string }>(`/v1/bots/${botId}/triggers`, { method: 'POST', body: JSON.stringify(t) }),
+  updateTrigger: (id: string, t: TriggerInput) =>
+    req<{ trigger: Trigger }>(`/v1/triggers/${id}`, { method: 'PATCH', body: JSON.stringify(t) }).then((r) => r.trigger),
+  deleteTrigger: (id: string) => req(`/v1/triggers/${id}`, { method: 'DELETE' }),
+  rotateTriggerToken: (id: string) => req<{ token: string }>(`/v1/triggers/${id}/token`, { method: 'POST' }).then((r) => r.token),
+  runTrigger: (id: string) => req<{ run_id: string; thread_id: string }>(`/v1/triggers/${id}/run`, { method: 'POST', body: '{}' }),
+  remote: () => req<RemoteStatus>('/v1/remote'),
+  setTailscale: (b: { serve?: boolean; funnel?: boolean }) =>
+    req<RemoteStatus>('/v1/remote/tailscale', { method: 'POST', body: JSON.stringify(b) }),
   token: () => TOKEN,
 }
 

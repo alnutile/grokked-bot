@@ -5,6 +5,7 @@ import { addHumanReply, createRun, createThread, executeStep } from '../agent/lo
 import { buildTranscript } from '../agent/transcript.ts'
 import { autoTitle } from '../agent/titles.ts'
 import { getBot } from './bots.ts'
+import { botBusy } from '../triggers.ts'
 import { LocalDockerRuntime, type BotRuntime } from '../runtime/container.ts'
 import { log } from '../log.ts'
 import { credits } from '../model/openrouter.ts'
@@ -20,7 +21,7 @@ const runtimeFor = (botId: string): BotRuntime => {
  *  All progress reaches clients over the WS, and all state is in SQLite, so a
  *  crash mid-run resumes rather than losing work. */
 const active = new Set<string>()
-function drive(db: Db, bus: EventBus, botId: string, runId: string): void {
+export function drive(db: Db, bus: EventBus, botId: string, runId: string): void {
   if (active.has(runId)) return
   active.add(runId)
   ;(async () => {
@@ -85,6 +86,11 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     if (last && ['queued', 'running'].includes(last.state)) {
       return c.json({ error: 'busy', message: 'this bot is still working on your last message — stop it first' }, 409)
     }
+    // A bot has one computer: a run elsewhere (another conversation, a webhook,
+    // a schedule) would be driving the same browser.
+    if (!(last && waitingOnHuman(last)) && botBusy(db, body.bot_id)) {
+      return c.json({ error: 'busy', message: 'this bot is busy with another conversation or a trigger — wait for it or stop it' }, 409)
+    }
     if (last && waitingOnHuman(last)) {
       addHumanReply(db, last.id, body.goal)
       if (body.allowed_domains) {
@@ -114,12 +120,12 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
    *  latest exchange ended, or what was asked if it hasn't yet. */
   app.get('/v1/threads', (c) => c.json({
     threads: db.prepare(
-      `SELECT t.id, t.bot_id, t.title, t.last_message_at,
+      `SELECT t.id, t.bot_id, t.title, t.kind, t.last_message_at,
               (SELECT COALESCE(r.outcome_summary, r.goal) FROM runs r
                 WHERE r.thread_id = t.id ORDER BY r.created_at DESC LIMIT 1) AS preview,
               (SELECT r.state FROM runs r WHERE r.thread_id = t.id ORDER BY r.created_at DESC LIMIT 1) AS state
        FROM threads t
-       WHERE t.kind = 'chat' AND EXISTS (SELECT 1 FROM runs r WHERE r.thread_id = t.id)
+       WHERE t.kind IN ('chat', 'trigger') AND EXISTS (SELECT 1 FROM runs r WHERE r.thread_id = t.id)
        ORDER BY t.last_message_at DESC LIMIT 200`,
     ).all(),
   }))

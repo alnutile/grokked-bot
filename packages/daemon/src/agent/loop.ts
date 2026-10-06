@@ -38,6 +38,8 @@ export interface CreateRunInput {
   max_usd?: number
   /** Continue this conversation; omitted means start a new one. */
   thread_id?: string
+  /** What started it, when not the human typing in the app. */
+  trigger?: { kind: 'webhook' | 'cron'; id: string }
 }
 
 /**
@@ -72,11 +74,11 @@ export function createRun(db: Db, input: CreateRunInput): string {
     const threadId = input.thread_id ?? createThread(db, input.bot_id)
 
     db.prepare(
-      `INSERT INTO runs (id, bot_id, thread_id, trigger_kind, goal, allowed_domains_json,
+      `INSERT INTO runs (id, bot_id, thread_id, trigger_kind, trigger_id, goal, allowed_domains_json,
                          state, max_steps, max_usd, max_wall_s, max_screenshots, created_at)
-       VALUES (?, ?, ?, 'user', ?, ?, 'queued', ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`,
     ).run(
-      runId, input.bot_id, threadId, input.goal,
+      runId, input.bot_id, threadId, input.trigger?.kind ?? 'user', input.trigger?.id ?? null, input.goal,
       JSON.stringify(input.allowed_domains ?? []),
       input.max_steps ?? cfg.defaults.max_steps,
       input.max_usd ?? cfg.defaults.max_usd,

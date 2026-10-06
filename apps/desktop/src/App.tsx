@@ -131,11 +131,16 @@ export default function App() {
           {threads.length === 0 && <p className="dim conv-empty">Conversations show up here.</p>}
           {threads.map((t) => {
             const b = botById.get(t.bot_id)
-            if (!b) return null
+            // The eval suite makes a conversation per task; keep them out of the way
+            // unless you're looking at the Eval bot.
+            if (!b || (b.id === 'eval-bot' && active !== 'eval-bot')) return null
             return (
               <button key={t.id} className={`conv ${threadId === t.id ? 'conv-on' : ''}`} onClick={() => openThread(t)}>
                 <Avatar bot={b} size={30} />
-                <span className="conv-text">{t.preview ?? t.title ?? ''}</span>
+                <span className="conv-text">
+                  {t.kind === 'trigger' && <span className="conv-trigger" title={`Started by ${t.title}`}>⚡ {t.title} · </span>}
+                  {t.preview ?? t.title ?? ''}
+                </span>
                 {['running', 'queued'].includes(t.state ?? '') && <span className="dot" title="working" />}
                 {t.state === 'blocked' && <span className="conv-flag" title="needs you">!</span>}
               </button>
@@ -162,7 +167,8 @@ export default function App() {
               onThreadCreated={(id) => { setThreadId(id); void api.threads().then(setThreads) }}
               onNewConversation={() => { setThreadId(null); setViewKey((k) => k + 1) }} />
             <BotPanel key={bot.id} bot={bot} initialTab={panelTab}
-              onChange={(nb) => setBots((list) => list.map((x) => (x.id === nb.id ? nb : x)))} />
+              onChange={(nb) => setBots((list) => list.map((x) => (x.id === nb.id ? nb : x)))}
+              onOpenThread={(id) => { setThreadId(id); setViewKey((k) => k + 1); void api.threads().then(setThreads) }} />
           </>
         : <div className="thread empty-thread"><p>Create a bot with + to get started.</p></div>}
       {showSettings && <Settings bots={bots} onClose={() => setShowSettings(false)} />}

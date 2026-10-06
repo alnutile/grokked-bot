@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type Bot, type Credential, type CredentialInput, type ModelInfo, type Settings as SettingsT } from '../api.ts'
+import { api, type Bot, type Credential, type CredentialInput, type ModelInfo, type RemoteStatus, type Settings as SettingsT } from '../api.ts'
 import { Avatar } from './Avatar.tsx'
 
-type Section = 'general' | 'models' | 'passwords'
+type Section = 'general' | 'models' | 'passwords' | 'remote'
 
 const PROVIDERS = [
   { id: 'google', label: 'Google', site: 'accounts.google.com' },
@@ -36,7 +36,7 @@ export function Settings({ bots, onClose }: { bots: Bot[]; onClose: () => void }
       <div className="settings">
         <nav className="settings-nav">
           <div className="settings-title">Settings</div>
-          {([['general', 'General'], ['models', 'Models'], ['passwords', 'Passwords']] as const).map(([k, label]) => (
+          {([['general', 'General'], ['models', 'Models'], ['passwords', 'Passwords'], ['remote', 'Remote access']] as const).map(([k, label]) => (
             <button key={k} className={`settings-tab ${section === k ? 'settings-tab-on' : ''}`} onClick={() => setSection(k)}>
               {label}
             </button>
@@ -45,7 +45,8 @@ export function Settings({ bots, onClose }: { bots: Bot[]; onClose: () => void }
         </nav>
         <div className="settings-body">
           <button className="icon-btn settings-close" onClick={onClose} title="Close (Esc)">✕</button>
-          {!settings && section !== 'passwords' && <p className="dim">Loading…</p>}
+          {!settings && (section === 'general' || section === 'models') && <p className="dim">Loading…</p>}
+          {section === 'remote' && <Remote />}
           {settings && section === 'general' && <General s={settings} save={save} />}
           {settings && section === 'models' && <Models s={settings} save={save} />}
           {section === 'passwords' && <Passwords bots={bots} />}
@@ -314,6 +315,63 @@ function CredentialForm({ cred, bots, all, onDone }: { cred: Credential | null; 
               <button className="btn btn-danger btn-sm" onClick={async () => { await api.deleteCredential(cred.id); onDone() }}>Delete</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDelete(false)}>Keep</button></>
           : <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDelete(true)}>Delete</button>)}
+      </div>
+    </div>
+  )
+}
+
+/** Reaching webhooks from other devices: Tailscale by default, any tunnel otherwise. */
+function Remote() {
+  const [st, setSt] = useState<RemoteStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const load = () => api.remote().then(setSt).catch((e) => setErr(String(e.message)))
+  useEffect(() => { void load() }, [])
+  const set = async (b: { serve?: boolean; funnel?: boolean }) => {
+    setBusy(true); setErr(null)
+    try { setSt(await api.setTailscale(b)) } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="settings-section">
+      <h2>Remote access</h2>
+      <p className="dim">
+        Webhooks have their own listener that serves nothing but <code>/hooks</code>, on port {st?.hooks_port ?? 8788}. Only
+        that is ever exposed — the rest of the app stays on this machine.
+      </p>
+
+      <div className="remote-card">
+        <b>Tailscale</b>
+        {!st ? <p className="dim">Checking…</p>
+          : !st.installed ? <p className="dim">Not installed. Get it at tailscale.com/download, then come back here.</p>
+          : !st.logged_in ? (
+              <p className="dim">Installed but not signed in. Run <code>sudo tailscale up</code>
+                {st.login_url ? <> or open <code>{st.login_url}</code></> : null}, then <button className="btn btn-ghost btn-sm" onClick={load}>Check again</button></p>
+            ) : (
+              <>
+                <p className="field-hint">This machine is <code>{st.dns_name}</code> on your tailnet.</p>
+                <label className="switch-row">
+                  <span><b>Webhooks on my tailnet</b><br /><span className="field-hint">{st.tailnet_base}/hooks/… — your devices and services on Tailscale.</span></span>
+                  <span className="switch"><input type="checkbox" disabled={busy} checked={st.serving} onChange={(e) => set({ serve: e.target.checked })} /><span /></span>
+                </label>
+                <label className="switch-row">
+                  <span><b>Public webhooks (Funnel)</b><br /><span className="field-hint">{st.public_base}/hooks/… — only hooks you mark Public, for services that can't join your tailnet.</span></span>
+                  <span className="switch"><input type="checkbox" disabled={busy} checked={st.funnel} onChange={(e) => set({ funnel: e.target.checked })} /><span /></span>
+                </label>
+              </>
+            )}
+        {err && <p className="hint err">{err}</p>}
+      </div>
+
+      <div className="remote-card">
+        <b>Not using Tailscale?</b>
+        <p className="field-hint">
+          Point any tunnel at <code>http://127.0.0.1:{st?.hooks_port ?? 8788}</code>: <b>Headscale</b> (open-source Tailscale
+          control server — the same switches above then work), <b>WireGuard</b>, <b>Caddy</b>, or a <b>Cloudflare Tunnel</b>.
+          Expose <code>/hooks</code> to your private network and <code>/public/hooks</code> to the internet; the second only
+          answers for hooks marked Public. To listen beyond this machine directly, set
+          <code> GROKKED_HOOKS_HOST=0.0.0.0</code> in <code>~/.config/grokked/env</code> and restart the daemon.
+        </p>
       </div>
     </div>
   )

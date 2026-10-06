@@ -63,6 +63,9 @@ importers:
       '@hono/node-server':
         specifier: ^1
         version: 1.19.17(hono@4.13.5)
+      croner:
+        specifier: ^10.0.1
+        version: 10.0.1
       hono:
         specifier: ^4
         version: 4.13.5
@@ -766,6 +769,10 @@ packages:
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
+
+  croner@10.0.1:
+    resolution: {integrity: sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g==}
+    engines: {node: '>=18.0'}
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
@@ -1478,6 +1485,8 @@ snapshots:
   caniuse-lite@1.0.30001810: {}
 
   convert-source-map@2.0.0: {}
+
+  croner@10.0.1: {}
 
   csstype@3.2.3: {}
 

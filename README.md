@@ -146,6 +146,41 @@ with its password and a link that logs straight in; `./vnc.sh <bot-id>` opens th
 Each bot's computer is a container named after the bot (`docker ps`). Docker picks free
 host ports for its screen and its control API, so any number of bots can run side by side.
 
+## Webhooks and schedules
+
+A bot can be started by more than you. In its **Triggers** tab:
+
+- **Webhooks** — a URL and a bearer token. Another app, a phone shortcut, n8n or a service
+  POSTs to it and the bot gets to work on the hook's standing instruction, plus whatever
+  the caller sends:
+
+  ```bash
+  curl -X POST https://<machine>.<tailnet>.ts.net/hooks/<id> \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"prompt": "Summarise this and draft a reply", "payload": {"from": "…", "body": "…"}, "wait": 120}'
+  ```
+
+  `wait` holds the request open (up to 300 s) and returns `{"state": "succeeded", "answer": "…"}`;
+  without it you get `202` and a status URL. Any other JSON body (GitHub, Stripe) is taken
+  whole as the payload. To have the bot report back somewhere — your webhook, your app's
+  API — just say so in the prompt; it has a shell and will make the call. A busy bot answers
+  `409` with `Retry-After`.
+- **Schedules** — a cron schedule (or a preset like *every weekday at 8:00*), a time zone
+  and an instruction: "check my inbox for anything from recruiters and summarise it".
+
+Each trigger gets its own conversation (marked ⚡ in the sidebar) with its full history.
+
+**Reaching them from other devices.** Webhooks have their own listener (port 8788) that
+serves nothing but `/hooks`; the rest of the API never leaves the machine. In
+**Settings → Remote access**, one switch puts it on your **Tailscale** tailnet with HTTPS,
+and another publishes hooks you mark *Public* through **Funnel** (for services that can't
+join your tailnet). Changing Tailscale settings from the app needs, once:
+`sudo tailscale set --operator=$USER`.
+
+Not using Tailscale? Point **Headscale**, WireGuard, Caddy or a Cloudflare Tunnel at
+`http://127.0.0.1:8788` — expose `/hooks` privately and `/public/hooks` publicly — or set
+`GROKKED_HOOKS_HOST=0.0.0.0` in `~/.config/grokked/env` to listen on your network directly.
+
 ## Configuration
 
 ```

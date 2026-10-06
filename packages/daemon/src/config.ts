@@ -84,6 +84,11 @@ export function saveConfig(patch: { models?: Partial<ModelRoles>; defaults?: Par
 /** The vault's encryption key: 32 random bytes, owner-only, made on first use. */
 export const VAULT_KEY_PATH = join(CONFIG_DIR, 'vault.key')
 
+/** The webhook listener: only /hooks routes, nothing else of the API. This is
+ *  what Tailscale (or any tunnel you prefer) exposes; the main API never is. */
+export const HOOKS_HOST = process.env.GROKKED_HOOKS_HOST ?? '127.0.0.1'
+export const HOOKS_PORT = Number(process.env.GROKKED_HOOKS_PORT ?? 8788)
+
 export const HOST = process.env.GROKKED_HOST ?? '127.0.0.1'
 export const PORT = Number(process.env.GROKKED_PORT ?? 8787)
 
