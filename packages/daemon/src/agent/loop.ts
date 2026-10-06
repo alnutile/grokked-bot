@@ -62,7 +62,7 @@ export function createRun(db: Db, input: CreateRunInput): string {
 
   db.exec('BEGIN')
   try {
-    const threadId = input.thread_id ?? createThread(db, input.bot_id, input.goal)
+    const threadId = input.thread_id ?? createThread(db, input.bot_id)
 
     db.prepare(
       `INSERT INTO runs (id, bot_id, thread_id, trigger_kind, goal, allowed_domains_json,
@@ -207,8 +207,10 @@ export async function executeStep(
   const run = getRun(db, runId)
   if (!run) return { done: true, state: 'failed', reason: 'no such run' }
 
-  const bot = db.prepare('SELECT name, persona_md FROM bots WHERE id = ?').get(run.bot_id) as
-    { name: string; persona_md: string } | undefined
+  const bot = db.prepare('SELECT name, persona_md, model_roles_json FROM bots WHERE id = ?').get(run.bot_id) as
+    { name: string; persona_md: string; model_roles_json: string } | undefined
+  // A bot can override the worker model; otherwise Settings decides.
+  const workerModel = (JSON.parse(bot?.model_roles_json || '{}') as { worker?: string }).worker || cfg.models.worker
   const botName = bot?.name ?? 'Bot'
 
   // ---- preflight: every cap is checked BEFORE spending, never after ----
@@ -243,7 +245,7 @@ export async function executeStep(
   // ---- model call ----
   let result
   try {
-    result = await chat({ model: cfg.models.worker, messages, tools: toolDefs() })
+    result = await chat({ model: workerModel, messages, tools: toolDefs() })
   } catch (e) {
     const err = e as ModelError
     log.error({ runId, err: err.message }, 'model call failed')
@@ -386,7 +388,7 @@ async function dispatchTool(
 
   let out: any
   try {
-    out = await tool.run!(args, { runtime, runId })
+    out = await tool.run!(args, { runtime, runId, botId: run.bot_id, db })
   } catch (e) {
     out = { ok: false, error: 'tool_threw', message: (e as Error).message }
   }

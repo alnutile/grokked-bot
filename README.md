@@ -90,17 +90,19 @@ seconds.
 
 ## Your first task
 
-1. Click **+ New bot** and give it a name. Each bot gets its own computer — its own
-   container, browser profile and logins — created the first time it's needed.
-2. In the box above the message field, list the domains the bot may visit, for example
-   `fec.gov`. This allowlist is enforced inside the container, not just in the prompt.
-   **max $** caps what this one run may spend.
-3. Type what you want, the way you would to a colleague, and press **Ctrl+Enter**.
+1. Click **+** at the top of the sidebar. The new bot opens on its **Details** tab: give it
+   a name, say what it's for, add standing instructions, and list the sites it may visit
+   (for example `linkedin.com`). That allowlist is enforced inside its computer, not just
+   in the prompt. Each bot gets its own computer — its own container, browser profile and
+   logins — created the first time it's needed.
+2. Type what you want, the way you would to a colleague, and press **Ctrl+Enter**. The
+   **+** in the message bar overrides the sites or the spending cap for one message.
 
-The conversation shows each step as it happens, and the bot's screen on the right shows
-what it's doing. It's a real conversation: follow-ups like "now do the same for 2022" or
-"did that work?" see what came before, and the chat is still there after a restart.
-**New conversation** starts fresh.
+The conversation shows each step as it happens, and the **Computer** tab shows its screen.
+It's a real conversation: follow-ups like "now do the same for 2022" or "did that work?"
+see what came before. Conversations get a title automatically (click it to rename), are
+listed in the sidebar, and are still there after a restart. **New** starts a fresh one.
+Anything the bot saves or downloads shows up in its **Media** tab.
 
 If it hits something it can't do alone — a login wall, a CAPTCHA, a question only you can
 answer — it stops and asks. Reply in the chat, or click **Take over the screen**; either
@@ -112,6 +114,14 @@ where the bot's cursor is (handy for passwords), and **Copy to my PC** brings ba
 whatever you copied on its screen. The ⤢ button opens the screen full size just to watch. Click **Give control back** and it picks up on
 whatever page you left it, in the same browser with the same session. Logins are kept in
 the bot's profile, so you sign in once.
+
+**Saved logins.** Open **Settings → Passwords** (bottom left) and add a site, username and
+password. When a bot hits that site's sign-in page it fills them in itself — the password is
+typed by the daemon, so the AI model never sees it, and it's only ever typed on that site.
+You can limit each login to particular bots.
+
+**Settings** also holds the default budget and limits, and which models do the work; any
+bot can override the model in its **Details**.
 
 The sidebar shows your remaining OpenRouter credit. The app connects to the bot's screen
 for you. To watch a bot in a full browser tab instead, `./vnc.sh` lists every running bot
@@ -137,12 +147,15 @@ host ports for its screen and its control API, so any number of bots can run sid
 ~/.config/grokked/env          OPENROUTER_API_KEY, optional DOCKER_HOST   (0600)
 ~/.config/grokked/config.json  model per role, default caps (written on first boot)
 ~/.config/grokked/token        API bearer token     (0600, generated on first boot)
+~/.config/grokked/vault.key    encryption key for saved passwords (0600, generated on first use)
 ~/.local/share/grokked/        grokked.db, blobs, per-bot work dirs
 ```
 
-`config.json` picks a model for each role — `worker` does the actual task — using any
-OpenRouter model id, and sets the default per-run caps (`max_steps`, `max_usd`,
-`max_wall_s`). The daemon listens on `127.0.0.1:8787`; set `GROKKED_PORT` in the env file
+**Settings** in the app edits `config.json`: the `worker` model does the actual task and
+`classifier` names conversations, using any tool-capable OpenRouter model id; the defaults
+are the per-run caps (`max_steps`, `max_usd`, `max_wall_s`). Changes apply from the next
+step, no restart. Back up `vault.key` with the database — without it, saved passwords
+can't be decrypted. The daemon listens on `127.0.0.1:8787`; set `GROKKED_PORT` in the env file
 to change it.
 
 ## Why Linux is the right host for this
@@ -242,6 +255,10 @@ instruction — an answer obtained the way you were told not to is a failed task
   `Network.getAllCookies` over it would drain every session in the profile.
 - **Everything binds to `127.0.0.1`.** The screen and control ports are loopback-only, and
   VNC is password-protected on top of that.
+- **Saved passwords never reach the model.** They're AES-256-GCM encrypted at rest with a
+  key kept outside the database. The bot lists logins without passwords and asks the daemon
+  to type one into a field; the daemon checks the page is on the login's own domain first,
+  so a lookalike page can't collect it, and strips the typed value from what the bot sees.
 - The container never mounts your home directory. Only a narrow `work/` bind mount is shared.
 
 Approvals — a gate before the bot acts on a site you're logged into — are not built yet.

@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
 import type { Db } from '../db/index.ts'
 import type { EventBus } from '../events.ts'
 import { addHumanReply, createRun, createThread, executeStep } from '../agent/loop.ts'
 import { buildTranscript } from '../agent/transcript.ts'
+import { autoTitle } from '../agent/titles.ts'
+import { getBot } from './bots.ts'
 import { LocalDockerRuntime, type BotRuntime } from '../runtime/container.ts'
 import { log } from '../log.ts'
 import { credits } from '../model/openrouter.ts'
@@ -56,32 +57,27 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
 
   const transcript = (threadId: string) => buildTranscript(db, threadId)
 
-  app.get('/v1/bots', (c) =>
-    c.json({ bots: db.prepare('SELECT * FROM bots ORDER BY created_at').all() }))
-
-  app.post('/v1/bots', async (c) => {
-    const body = await c.req.json<{ id?: string; name: string; persona_md?: string }>()
-    const t = Date.now()
-    const id = body.id ?? `bot_${randomUUID().replaceAll('-', '').slice(0, 12)}`
-    db.prepare(`INSERT INTO bots (id, name, persona_md, autonomy, status, created_at, updated_at)
-                VALUES (?, ?, ?, 'supervised', 'active', ?, ?)`)
-      .run(id, body.name, body.persona_md ?? '', t, t)
-    return c.json({ bot: db.prepare('SELECT * FROM bots WHERE id=?').get(id) }, 201)
-  })
-
-  /** A message to a bot. It continues the bot's current conversation: if the
-   *  bot is waiting on the human, this is the answer and that run carries on;
-   *  otherwise it starts a new run in the same thread, which sees the earlier
-   *  exchanges. */
+  /** A message to a bot, in a conversation: `thread_id` names one, `new_thread`
+   *  starts one, and neither continues the bot's latest. If the bot is waiting on
+   *  the human, this is the answer and that run carries on; otherwise it starts a
+   *  new run in the thread, which sees the earlier exchanges. Domains and budget
+   *  fall back to the bot's defaults. */
   app.post('/v1/runs', async (c) => {
     const body = await c.req.json<{
       bot_id: string; goal: string; allowed_domains?: string[]
-      max_steps?: number; max_usd?: number
+      max_steps?: number; max_usd?: number; thread_id?: string; new_thread?: boolean
     }>()
-    if (!db.prepare('SELECT 1 FROM bots WHERE id=?').get(body.bot_id)) {
-      return c.json({ error: 'no_such_bot', message: `no bot ${body.bot_id}` }, 404)
+    const bot = getBot(db, body.bot_id)
+    if (!bot) return c.json({ error: 'no_such_bot', message: `no bot ${body.bot_id}` }, 404)
+    if (body.thread_id) {
+      const t = db.prepare('SELECT bot_id FROM threads WHERE id = ?').get(body.thread_id) as { bot_id: string } | undefined
+      if (t?.bot_id !== body.bot_id) return c.json({ error: 'no_such_thread' }, 404)
     }
-    const threadId = currentThread(body.bot_id) ?? createThread(db, body.bot_id, body.goal)
+    const threadId = body.thread_id
+      ?? (body.new_thread ? undefined : currentThread(body.bot_id))
+      ?? createThread(db, body.bot_id)
+    body.allowed_domains ??= bot.default_domains
+    body.max_usd ??= bot.default_max_usd ?? undefined
     const last = latestRun(threadId)
     if (last && ['queued', 'running'].includes(last.state)) {
       return c.json({ error: 'busy', message: 'this bot is still working on your last message — stop it first' }, 409)
@@ -96,6 +92,7 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
       return c.json({ run: db.prepare('SELECT * FROM runs WHERE id=?').get(last.id), resumed: true }, 200)
     }
     const runId = createRun(db, { ...body, thread_id: threadId })
+    if (!last) autoTitle(db, bus, threadId, body.bot_id, body.goal)
     bus.emit({ topic: `bot:${body.bot_id}`, type: 'run.created', run_id: runId,
                bot_id: body.bot_id, data: { run_id: runId, goal: body.goal } })
     drive(db, bus, body.bot_id, runId)
@@ -108,6 +105,36 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     const threadId = currentThread(c.req.param('id'))
     if (!threadId) return c.json({ thread_id: null, entries: [], run: null })
     return c.json({ thread_id: threadId, entries: transcript(threadId), run: latestRun(threadId) ?? null })
+  })
+
+  /** Every conversation, newest first, for the sidebar. The preview is how the
+   *  latest exchange ended, or what was asked if it hasn't yet. */
+  app.get('/v1/threads', (c) => c.json({
+    threads: db.prepare(
+      `SELECT t.id, t.bot_id, t.title, t.last_message_at,
+              (SELECT COALESCE(r.outcome_summary, r.goal) FROM runs r
+                WHERE r.thread_id = t.id ORDER BY r.created_at DESC LIMIT 1) AS preview,
+              (SELECT r.state FROM runs r WHERE r.thread_id = t.id ORDER BY r.created_at DESC LIMIT 1) AS state
+       FROM threads t
+       WHERE t.kind = 'chat' AND EXISTS (SELECT 1 FROM runs r WHERE r.thread_id = t.id)
+       ORDER BY t.last_message_at DESC LIMIT 200`,
+    ).all(),
+  }))
+
+  app.get('/v1/threads/:id', (c) => {
+    const id = c.req.param('id')
+    const thread = db.prepare('SELECT id, bot_id, title, title_source FROM threads WHERE id = ?').get(id)
+    if (!thread) return c.json({ error: 'not_found' }, 404)
+    return c.json({ thread, entries: transcript(id), run: latestRun(id) ?? null })
+  })
+
+  /** Renaming makes the title the human's; the automatic one never overwrites it. */
+  app.patch('/v1/threads/:id', async (c) => {
+    const { title } = await c.req.json<{ title?: string }>()
+    if (typeof title !== 'string') return c.json({ error: 'bad_request' }, 400)
+    db.prepare(`UPDATE threads SET title = ?, title_source = 'human' WHERE id = ?`)
+      .run(title.trim().slice(0, 120), c.req.param('id'))
+    return c.json({ ok: true })
   })
 
   /** Start a fresh conversation; the next message won't see the old one. */

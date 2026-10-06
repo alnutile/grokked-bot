@@ -69,6 +69,21 @@ export function loadConfig(): Config {
   }
 }
 
+/** Merge a change into config.json. The loop reads config every step, so a new
+ *  model or cap applies from the next step on, no restart. */
+export function saveConfig(patch: { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']> }): Config {
+  const cur = loadConfig()
+  const next: Config = {
+    models: { ...cur.models, ...(patch.models ?? {}) },
+    defaults: { ...cur.defaults, ...(patch.defaults ?? {}) },
+  }
+  writeFileSync(join(CONFIG_DIR, 'config.json'), JSON.stringify(next, null, 2) + '\n', { mode: 0o600 })
+  return next
+}
+
+/** The vault's encryption key: 32 random bytes, owner-only, made on first use. */
+export const VAULT_KEY_PATH = join(CONFIG_DIR, 'vault.key')
+
 export const HOST = process.env.GROKKED_HOST ?? '127.0.0.1'
 export const PORT = Number(process.env.GROKKED_PORT ?? 8787)
 

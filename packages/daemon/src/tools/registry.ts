@@ -1,12 +1,16 @@
 import * as z from 'zod'
 import type { ToolDef } from '../model/openrouter.ts'
 import type { BotRuntime } from '../runtime/container.ts'
+import type { Db } from '../db/index.ts'
+import { hostMatches, vault } from '../vault.ts'
 
 export type Risk = 'low' | 'medium' | 'high'
 
 export interface ToolCtx {
   runtime: BotRuntime
   runId: string
+  botId: string
+  db: Db
 }
 
 export interface Tool {
@@ -160,6 +164,68 @@ export const TOOLS: Tool[] = [
       reason: z.string().describe('Why a ref-based tool could not do this. Shown to the human approving.'),
     }),
     risk: 'high', approval: 'always', replaySafe: false, run: passthrough('desktop_action'),
+  },
+
+  // ---------------------------------------------------------------- saved logins
+  {
+    name: 'credentials_list',
+    description:
+      'List the logins the human has saved for you: label, site, username and an id. Passwords are never ' +
+      'shown to you. Check this before asking the human to sign you in.',
+    schema: S({}),
+    risk: 'low', approval: 'never', replaySafe: true,
+    run: async (_args, ctx) => ({
+      ok: true,
+      credentials: vault.forBot(ctx.db, ctx.botId).map((c) => ({
+        id: c.id, label: c.label, site: c.domain, url: c.url || undefined,
+        username: c.username || undefined, has_password: c.has_secret, notes: c.notes || undefined,
+      })),
+    }),
+  },
+  {
+    name: 'browser_fill_credential',
+    description:
+      'Type a saved username or password into a field by ref, without you ever seeing it. Only works on a page ' +
+      "on the credential's own site. Call once for the username field and once for the password field, then " +
+      'click the sign-in button yourself.',
+    schema: S({
+      credential_id: z.string().describe('An id from credentials_list.'),
+      field: z.enum(['username', 'password']),
+      ref: z.string().describe('The textbox ref from the current snapshot.'),
+      element: z.string().describe('Name of the field, in plain words.'),
+    }),
+    risk: 'medium', approval: 'never', replaySafe: false,
+    run: async (args, ctx) => {
+      const c = vault.secretFor(ctx.db, args.credential_id, ctx.botId)
+      if (!c) return { ok: false, error: 'no_such_credential', message: 'No saved login with that id is available to you.' }
+      const text = args.field === 'username' ? c.row.username : c.secret
+      if (!text) {
+        return { ok: false, error: 'not_saved', message: `No ${args.field} is saved for ${c.row.label}. Ask the human.`, recovery: 'ask_human' }
+      }
+      // Never type a secret into the wrong site: a lookalike page or a redirect
+      // must not be able to collect it.
+      const page = await ctx.runtime.act('page_info', {}) as { ok: boolean; url?: string }
+      let host = ''
+      try { host = new URL(String(page.url)).hostname } catch { /* about:blank etc. */ }
+      if (!host || !hostMatches(host, c.row.domain)) {
+        return {
+          ok: false, error: 'wrong_site',
+          message: `This page is on ${host || 'no site'}, but ${c.row.label} is for ${c.row.domain}. ` +
+                   'Saved logins are only typed on their own site.',
+        }
+      }
+      const out = await ctx.runtime.act('type', { ref: args.ref, text, clear: true, submit: false }) as
+        { ok: boolean; url?: string; error?: string; message?: string }
+      // The shim echoes the field's value back; that must not reach the model.
+      if (out.ok === false) {
+        return { ok: false, error: out.error, message: String(out.message ?? '').replaceAll(text, '•••') }
+      }
+      return {
+        ok: true, url: out.url,
+        typed: args.field === 'password' ? 'the saved password (hidden from you)' : `the username ${c.row.username}`,
+        note: 'refs still valid; snapshot not regenerated',
+      }
+    },
   },
 
   // ---------------------------------------------------------------- control

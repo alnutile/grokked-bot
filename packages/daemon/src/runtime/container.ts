@@ -34,11 +34,12 @@ export class LocalDockerRuntime implements BotRuntime {
   async ensureUp(): Promise<void> {
     let running = await this.#state()
 
-    // Computers created before per-bot ports were all pinned to 16080/18088, so
-    // only one bot could be up at a time. Recreate them; the profile volume and
-    // work dir carry over, so logins survive.
-    if (running !== null && await this.#hasPinnedPorts()) {
-      log.info({ bot: this.name }, 'recreating bot computer without pinned ports')
+    // Recreate a computer that is out of date: built from an older image, or from
+    // before per-bot ports (all pinned to 16080/18088, so only one bot could be
+    // up). The profile volume and work dir carry over, so logins survive.
+    const stale = running !== null && await this.#staleReason()
+    if (stale) {
+      log.info({ bot: this.name, reason: stale }, 'recreating bot computer')
       await exec('docker', ['rm', '-f', this.name], { env })
       running = null
     }
@@ -73,10 +74,15 @@ export class LocalDockerRuntime implements BotRuntime {
     }
   }
 
-  async #hasPinnedPorts(): Promise<boolean> {
-    const { stdout } = await exec('docker', ['inspect', '-f', '{{json .HostConfig.PortBindings}}', this.name], { env })
-    const bindings = JSON.parse(stdout) as Record<string, Array<{ HostPort: string }>> | null
-    return Object.values(bindings ?? {}).some((bs) => bs.some((b) => b.HostPort !== ''))
+  async #staleReason(): Promise<string | null> {
+    const { stdout } = await exec('docker', ['inspect', '-f', '{{.Image}} {{json .HostConfig.PortBindings}}', this.name], { env })
+    const [imageId, json] = [stdout.slice(0, stdout.indexOf(' ')), stdout.slice(stdout.indexOf(' ') + 1)]
+    const bindings = JSON.parse(json) as Record<string, Array<{ HostPort: string }>> | null
+    if (Object.values(bindings ?? {}).some((bs) => bs.some((b) => b.HostPort !== ''))) return 'pinned ports'
+    const current = await exec('docker', ['image', 'inspect', '-f', '{{.Id}}', this.image], { env })
+      .then((r) => r.stdout.trim()).catch(() => null)
+    if (current && current !== imageId) return 'newer image'
+    return null
   }
 
   /** Host ports Docker actually bound. Docker picks free ones per container and

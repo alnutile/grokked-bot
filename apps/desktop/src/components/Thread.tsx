@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, subscribe, type Frame, type Run } from '../api.ts'
+import { api, subscribe, type Bot, type Frame, type Run } from '../api.ts'
+import { Avatar } from './Avatar.tsx'
 
 export interface Entry {
   kind: 'goal' | 'say' | 'tool' | 'done' | 'ask' | 'error'
@@ -16,75 +17,92 @@ const TOOL_VERB: Record<string, string> = {
   browser_read_text: 'read the page', browser_scroll: 'scrolled',
   browser_wait_for: 'waited for', browser_screenshot: 'took a screenshot',
   run_bash: 'ran', write_file: 'wrote', desktop_action: 'used the desktop',
+  credentials_list: 'checked saved logins', browser_fill_credential: 'filled in a saved login:',
 }
 
-export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
+/**
+ * One conversation with a bot. `threadId` null means a new conversation that
+ * doesn't exist until the first message; `onThreadCreated` reports its id.
+ */
+export function Thread({ bot, threadId, frames, onThreadCreated, onNewConversation }: {
+  bot: Bot
+  threadId: string | null
+  frames: Frame[]
+  onThreadCreated: (id: string) => void
+  onNewConversation: () => void
+}) {
+  const [tid, setTid] = useState(threadId)
+  const [title, setTitle] = useState('')
   const [entries, setEntries] = useState<Entry[]>([])
   const [run, setRun] = useState<Run | null>(null)
   const [goal, setGoal] = useState('')
-  // The domain box is remembered per bot: a bot is usually pointed at the same sites.
-  const domainsKey = `grokked.domains.${botId}`
-  const [domains, setDomainsState] = useState(() => {
-    try { return localStorage.getItem(domainsKey) ?? '' } catch { return '' }
-  })
-  const setDomains = (v: string) => {
-    setDomainsState(v)
-    try { localStorage.setItem(domainsKey, v) } catch { /* private mode */ }
-  }
+  const [showOpts, setShowOpts] = useState(false)
+  const [domains, setDomains] = useState('')   // blank = the bot's defaults
   const [budget, setBudget] = useState('')
   const [sending, setSending] = useState(false)
-  const endRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  // Frames already reflected in `entries`; a loaded transcript covers everything so far.
+  const seenSeq = useRef(0)
+  const lastSeq = () => frames.length ? frames[frames.length - 1]!.seq : 0
 
   // Scroll only the message list. scrollIntoView also scrolls every ancestor,
   // which dragged the whole window down and hid the sidebar and screen.
   useEffect(() => {
-    const list = endRef.current?.parentElement
+    const list = listRef.current
     list?.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
   }, [entries.length])
 
-  // The conversation lives in the daemon, so it survives restarts and bot switches.
+  // The conversation lives in the daemon, so it survives restarts and switches.
   useEffect(() => {
-    void api.thread(botId).then((t) => {
+    if (!threadId) return
+    void api.threadById(threadId).then((t) => {
+      seenSeq.current = lastSeq()
+      setTitle(t.thread.title ?? '')
       setEntries(t.entries)
       setRun(t.run)
-      if (t.run) subscribe([`run:${t.run.id}`, `bot:${botId}`])
+      if (t.run) subscribe([`run:${t.run.id}`])
     }).catch(() => {})
-  }, [botId])
+  }, [threadId])
+
+  // Automatic titles arrive a moment after the first message.
+  useEffect(() => {
+    const f = frames[frames.length - 1]
+    if (f?.type === 'thread.updated' && f.data?.thread_id === tid && f.data?.title) setTitle(String(f.data.title))
+  }, [frames, tid])
 
   // Poll the run row while it is live. The WS carries step events, but state,
-  // step count and spend live on the run itself -- without this the header sits
-  // at "queued  step 0/40  $0.0000" for the whole run.
+  // step count and spend live on the run itself.
   useEffect(() => {
     if (!run || !['queued', 'running'].includes(run.state)) return
     const t = setInterval(() => { void api.run(run.id).then(setRun).catch(() => {}) }, 1500)
     return () => clearInterval(t)
   }, [run?.id, run?.state])
 
+  // Several frames can land in one render, so walk everything new rather than
+  // only the latest.
   useEffect(() => {
-    const latest = frames[frames.length - 1]
-    if (!latest || !run || latest.topic !== `run:${run.id}`) return
-    const d = latest.data ?? {}
-
-    if (latest.type === 'run.step' && d.kind === 'llm_call' && d.text) {
-      setEntries((e) => [...e, { kind: 'say', text: String(d.text), cost: d.cost_usd }])
+    if (!run) return
+    const fresh = frames.filter((f) => f.seq > seenSeq.current && f.topic === `run:${run.id}`)
+    if (frames.length) seenSeq.current = Math.max(seenSeq.current, frames[frames.length - 1]!.seq)
+    for (const f of fresh) {
+      const d = f.data ?? {}
+      if (f.type === 'run.step' && d.kind === 'llm_call' && d.text) {
+        setEntries((e) => [...e, { kind: 'say', text: String(d.text), cost: d.cost_usd }])
+      }
+      if (f.type === 'run.step' && d.kind === 'tool_call') {
+        setEntries((e) => [...e, {
+          kind: 'tool', tool: d.tool_name, status: d.status, step: d.step_no, text: String(d.summary ?? ''),
+        }])
+      }
+      if (f.type === 'run.finished') setEntries((e) => [...e, { kind: 'done', text: String(d.summary ?? '') }])
+      if (f.type === 'run.state' && d.state === 'blocked' && d.question) {
+        setEntries((e) => [...e, { kind: 'ask', text: String(d.question) }])
+      } else if (f.type === 'run.state' && ['failed', 'blocked'].includes(d.state)) {
+        setEntries((e) => [...e, { kind: 'error', text: `${d.state}${d.reason ? ` — ${d.reason}` : ''}` }])
+      }
+      // Any state change (including a wake-up after you give control back) refreshes the header.
+      if (f.type === 'run.state' || f.type === 'run.finished') void api.run(run.id).then(setRun)
     }
-    if (latest.type === 'run.step' && d.kind === 'tool_call') {
-      setEntries((e) => [...e, {
-        kind: 'tool', tool: d.tool_name, status: d.status, step: d.step_no,
-        text: String(d.summary ?? ''),
-      }])
-    }
-    if (latest.type === 'run.finished') {
-      setEntries((e) => [...e, { kind: 'done', text: String(d.summary ?? '') }])
-      void api.run(run.id).then(setRun)
-    }
-    if (latest.type === 'run.state' && d.state === 'blocked' && d.question) {
-      setEntries((e) => [...e, { kind: 'ask', text: String(d.question) }])
-    } else if (latest.type === 'run.state' && ['failed', 'blocked'].includes(d.state)) {
-      setEntries((e) => [...e, { kind: 'error', text: `${d.state}${d.reason ? ` — ${d.reason}` : ''}` }])
-    }
-    // Any state change (including a wake-up after you give control back) refreshes the header.
-    if (latest.type === 'run.state') void api.run(run.id).then(setRun)
   }, [frames, run?.id])
 
   const send = async () => {
@@ -94,55 +112,60 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
     setEntries((e) => [...e, { kind: 'goal', text }])
     setGoal('')
     try {
-      const r = await api.createRun(
-        botId, text,
-        domains.split(',').map((s) => s.trim()).filter(Boolean),
-        budget ? Number(budget) : undefined,
-      )
+      const override = domains.split(',').map((s) => s.trim()).filter(Boolean)
+      const r = await api.createRun(bot.id, text, {
+        thread_id: tid,
+        ...(override.length ? { allowed_domains: override } : {}),
+        ...(budget ? { max_usd: Number(budget) } : {}),
+      })
+      seenSeq.current = lastSeq()
       setRun(r)
-      subscribe([`run:${r.id}`, `bot:${botId}`])
+      subscribe([`run:${r.id}`])
+      if (!tid) { setTid(r.thread_id); onThreadCreated(r.thread_id) }
     } catch (e) {
       setEntries((x) => [...x, { kind: 'error', text: String((e as Error).message) }])
     } finally { setSending(false) }
   }
 
+  const saveTitle = () => { if (tid && title.trim()) void api.renameThread(tid, title.trim()) }
+
   const live = run && ['queued', 'running'].includes(run.state)
   const waiting = run && (run.state === 'sleeping' || (run.state === 'blocked' && run.state_reason === 'ask_human'))
-
-  const newConversation = async () => {
-    try {
-      await api.newThread(botId)
-      setEntries([]); setRun(null)
-    } catch (e) { setEntries((x) => [...x, { kind: 'error', text: String((e as Error).message) }]) }
-  }
+  const defaults = bot.default_domains.length ? bot.default_domains.join(', ') : 'any site'
 
   return (
     <div className="thread">
       <div className="thread-head">
-        <div>
-          <div className="thread-title">{botId}</div>
+        <span className="bot-pill"><Avatar bot={bot} size={20} />{bot.name}</span>
+        <input
+          className="title-input" value={title} placeholder={tid ? 'Untitled' : 'New conversation'}
+          disabled={!tid} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+          title="Click to rename this conversation"
+        />
+        <div className="thread-head-right">
           {run && (
-            <div className="thread-sub">
+            <span className="thread-sub">
               <span className={`pill pill-${run.state}`}>{run.state}</span>
-              step {run.step_no}/{run.max_steps} · ${Number(run.spend_usd).toFixed(4)} of ${run.max_usd}
-            </div>
+              ${Number(run.spend_usd).toFixed(3)}
+            </span>
           )}
+          {live
+            ? <button className="btn btn-ghost btn-sm" onClick={() => api.cancel(run!.id)}>Stop</button>
+            : tid && (
+                <button className="btn btn-ghost btn-sm" onClick={onNewConversation}
+                  title="Start fresh: the bot won't see this conversation">New</button>
+              )}
         </div>
-        {live
-          ? <button className="btn btn-ghost" onClick={() => api.cancel(run!.id)}>Stop</button>
-          : entries.length > 0 && (
-              <button className="btn btn-ghost" onClick={newConversation}
-                title="Start fresh: the bot won't see this conversation">New conversation</button>
-            )}
       </div>
 
-      <div className="messages">
+      <div className="messages" ref={listRef}>
         {entries.length === 0 && (
           <div className="empty">
-            <p>Give this bot a job.</p>
+            <Avatar bot={bot} size={56} />
+            <p>Give {bot.name} a job.</p>
             <p className="dim">
-              It has its own computer — a browser it stays logged into, a shell, and a desktop.
-              It'll use whichever fits.
+              {bot.description || 'It has its own computer — a browser it stays logged into, a shell, and a desktop. It’ll use whichever fits.'}
             </p>
           </div>
         )}
@@ -166,29 +189,35 @@ export function Thread({ botId, frames }: { botId: string; frames: Frame[] }) {
             </div>
           </div>
         )}
-        <div ref={endRef} />
       </div>
 
       <div className="composer">
-        <div className="composer-opts">
-          <input
-            className="domains" value={domains} onChange={(ev) => setDomains(ev.target.value)}
-            placeholder="any site — or limit it, e.g. linkedin.com, fec.gov"
-            title="Sites this run may visit. Blank means any site. Enforced in the container, not the prompt."
-          />
-          <input
-            className="domains budget" value={budget} onChange={(ev) => setBudget(ev.target.value)}
-            placeholder="max $" inputMode="decimal"
-            title="Per-run spending cap. Guards against runaway loops; blank uses the daemon default."
-          />
-        </div>
-        <div className="composer-row">
+        {showOpts && (
+          <div className="composer-opts">
+            <label>
+              <span>Sites for this message</span>
+              <input className="domains" value={domains} onChange={(ev) => setDomains(ev.target.value)}
+                placeholder={`${defaults} (bot default)`}
+                title="Overrides the bot's default sites. Blank uses the default. Enforced in the container, not the prompt." />
+            </label>
+            <label className="budget-label">
+              <span>Max $</span>
+              <input className="domains budget" value={budget} onChange={(ev) => setBudget(ev.target.value)}
+                placeholder={bot.default_max_usd ? String(bot.default_max_usd) : 'default'} inputMode="decimal"
+                title="Per-run spending cap. Guards against runaway loops." />
+            </label>
+          </div>
+        )}
+        <div className="composer-bar">
+          <button className={`plus ${showOpts || domains || budget ? 'plus-on' : ''}`} onClick={() => setShowOpts((v) => !v)}
+            title="Sites and budget for this message">+</button>
           <textarea
             value={goal} onChange={(ev) => setGoal(ev.target.value)}
             onKeyDown={(ev) => { if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) void send() }}
-            placeholder={waiting ? `Reply to ${botId}…    (⌘/Ctrl+Enter to send)` : `Message ${botId}…    (⌘/Ctrl+Enter to send)`} rows={2}
+            placeholder={waiting ? `Reply to ${bot.name}…` : `Message ${bot.name}…`} rows={1}
           />
-          <button className="btn btn-send" onClick={send} disabled={sending || !!live || !goal.trim()}>Send</button>
+          <button className="send" onClick={send} disabled={sending || !!live || !goal.trim()}
+            title="Send (Ctrl+Enter)">↑</button>
         </div>
       </div>
     </div>

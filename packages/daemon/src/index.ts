@@ -8,6 +8,9 @@ import { openDb } from './db/index.ts'
 import { EventBus } from './events.ts'
 import { createApp } from './http/app.ts'
 import { mountRuns, reclaimOrphanedRuns } from './http/runs.ts'
+import { mountBots } from './http/bots.ts'
+import { mountSettings } from './http/settings.ts'
+import { backfillTitles } from './agent/titles.ts'
 import { loadConfig } from './config.ts'
 import { validateModels } from './model/openrouter.ts'
 import { log } from './log.ts'
@@ -20,8 +23,11 @@ const token = loadOrCreateToken()
 const db = openDb()
 const bus = new EventBus(db)
 const app = createApp({ db, bus, token, startedAt })
+mountBots(app, db)
+mountSettings(app, db)
 mountRuns(app, db, bus)
 reclaimOrphanedRuns(db, bus)
+backfillTitles(db, bus)
 void validateModels(Object.values(loadConfig().models))
 
 const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {

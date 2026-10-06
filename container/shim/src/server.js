@@ -32,7 +32,7 @@ session.connect()
 const ACTIONS = new Set([
   'navigate', 'snapshot', 'click', 'type', 'select', 'find',
   'read_text', 'scroll', 'wait_for', 'screenshot', 'upload_file', 'desktop_action',
-  'run_bash', 'read_file', 'write_file', 'list_files',
+  'run_bash', 'read_file', 'write_file', 'list_files', 'page_info',
 ])
 
 function authed(req) {

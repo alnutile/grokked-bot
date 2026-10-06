@@ -22,14 +22,43 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', ...(init.headers ?? {}) },
   })
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+  if (!res.ok) {
+    const text = await res.text()
+    let message = text
+    try { message = (JSON.parse(text) as { message?: string }).message ?? text } catch { /* not JSON */ }
+    throw new Error(message || `${res.status}`)
+  }
   return (await res.json()) as T
 }
 
 export interface Bot {
-  id: string; name: string; persona_md: string
+  id: string; name: string; persona_md: string; description: string
+  avatar: { shape?: number; hue?: number }
+  default_domains: string[]; default_max_usd: number | null
+  /** Overrides the Settings worker model for this bot; '' uses Settings. */
+  worker_model: string
   autonomy: string; status: string; created_at: number
 }
+
+export interface ThreadSummary {
+  id: string; bot_id: string; title: string | null; preview: string | null
+  state: string | null; last_message_at: number
+}
+
+export interface Settings {
+  models: { planner: string; worker: string; vision: string; distiller: string; classifier: string }
+  defaults: { max_steps: number; max_usd: number; max_wall_s: number; max_screenshots: number }
+}
+
+export interface ModelInfo { id: string; name: string; context_length: number; prompt_per_m: number; completion_per_m: number }
+
+export interface Credential {
+  id: string; label: string; url: string; domain: string; username: string
+  notes: string; bot_ids: string[]; has_secret: boolean; updated_at: number
+}
+export type CredentialInput = Partial<Pick<Credential, 'label' | 'url' | 'username' | 'notes' | 'bot_ids'>> & { password?: string }
+
+export interface BotFile { path: string; abs: string; size: number; mtime: number }
 /** A chat line rebuilt by the daemon from SQLite. */
 export interface ThreadEntry {
   kind: 'goal' | 'say' | 'tool' | 'done' | 'ask' | 'error'
@@ -57,11 +86,46 @@ export const api = {
   thread: (botId: string) =>
     req<{ thread_id: string | null; entries: ThreadEntry[]; run: Run | null }>(`/v1/bots/${botId}/thread`),
   newThread: (botId: string) => req<{ thread_id: string }>(`/v1/bots/${botId}/threads`, { method: 'POST' }),
-  createRun: (bot_id: string, goal: string, allowed_domains: string[], max_usd?: number) =>
-    req<{ run: Run }>('/v1/runs', {
+  /** Omitted domains/budget fall back to the bot's defaults on the daemon. */
+  createRun: (bot_id: string, goal: string, opts: {
+    thread_id?: string | null; allowed_domains?: string[]; max_usd?: number
+  } = {}) =>
+    req<{ run: Run & { thread_id: string } }>('/v1/runs', {
       method: 'POST',
-      body: JSON.stringify({ bot_id, goal, allowed_domains, ...(max_usd ? { max_usd } : {}) }),
+      body: JSON.stringify({
+        bot_id, goal,
+        ...(opts.thread_id ? { thread_id: opts.thread_id } : { new_thread: true }),
+        ...(opts.allowed_domains ? { allowed_domains: opts.allowed_domains } : {}),
+        ...(opts.max_usd ? { max_usd: opts.max_usd } : {}),
+      }),
     }).then((r) => r.run),
+  settings: () => req<Settings>('/v1/settings'),
+  saveSettings: (patch: { models?: Partial<Settings['models']>; defaults?: Partial<Settings['defaults']> }) =>
+    req<Settings>('/v1/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
+  models: () => req<{ models: ModelInfo[] }>('/v1/models').then((r) => r.models),
+  credentials: () => req<{ credentials: Credential[] }>('/v1/credentials').then((r) => r.credentials),
+  createCredential: (c: CredentialInput) =>
+    req<{ credential: Credential }>('/v1/credentials', { method: 'POST', body: JSON.stringify(c) }).then((r) => r.credential),
+  updateCredential: (id: string, c: CredentialInput) =>
+    req<{ credential: Credential }>(`/v1/credentials/${id}`, { method: 'PATCH', body: JSON.stringify(c) }).then((r) => r.credential),
+  deleteCredential: (id: string) => req(`/v1/credentials/${id}`, { method: 'DELETE' }),
+  revealCredential: (id: string) => req<{ password: string }>(`/v1/credentials/${id}/reveal`).then((r) => r.password),
+  updateBot: (id: string, patch: Partial<Pick<Bot, 'name' | 'description' | 'persona_md' | 'default_domains' | 'default_max_usd' | 'avatar' | 'worker_model'>>) =>
+    req<{ bot: Bot }>(`/v1/bots/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.bot),
+  threads: () => req<{ threads: ThreadSummary[] }>('/v1/threads').then((r) => r.threads),
+  threadById: (id: string) =>
+    req<{ thread: { id: string; bot_id: string; title: string | null }; entries: ThreadEntry[]; run: Run | null }>(`/v1/threads/${id}`),
+  renameThread: (id: string, title: string) =>
+    req(`/v1/threads/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
+  files: (botId: string) => req<{ root: string; files: BotFile[] }>(`/v1/bots/${botId}/files`),
+  /** A blob: URL for a file in the bot's work dir (img tags can't send the bearer token). */
+  fileUrl: async (botId: string, path: string) => {
+    const res = await fetch(`${BASE}/v1/bots/${botId}/files/raw?path=${encodeURIComponent(path)}`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    return URL.createObjectURL(await res.blob())
+  },
   cancel: (id: string) => req(`/v1/runs/${id}/cancel`, { method: 'POST' }),
   computer: (botId: string) =>
     req<{ vnc_url: string | null; vnc_port: number | null; vnc_password: string | null; human_in_control: boolean }>(`/v1/bots/${botId}/computer`),

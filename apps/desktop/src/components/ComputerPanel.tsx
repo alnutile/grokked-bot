@@ -14,7 +14,14 @@ const hostWrite = (t: string) => writeText(t).catch(() => navigator.clipboard.wr
  * the same X server and fight over the cursor. Taking over also opens the screen
  * big, since the side panel is too small to actually use.
  */
-export function ComputerPanel({ botId }: { botId: string }) {
+export function ComputerPanel({ botId, name, autoTakeover, onAutoTakeover }: {
+  botId: string
+  name?: string
+  /** Take over as soon as the screen is ready (from "Take over" on a question in the chat). */
+  autoTakeover?: boolean
+  onAutoTakeover?: () => void
+}) {
+  const label = name ?? botId
   const [port, setPort] = useState<number | null>(null)
   const [pw, setPw] = useState<string | null>(null)
   const [mine, setMine] = useState(false)
@@ -55,6 +62,10 @@ export function ComputerPanel({ botId }: { botId: string }) {
     return () => window.removeEventListener('grokked:takeover', onAsk)
   })
 
+  useEffect(() => {
+    if (autoTakeover && port && !mine && !busy) { onAutoTakeover?.(); void toggle() }
+  }, [autoTakeover, port])
+
   const pasteIn = async () => {
     try {
       const text = await hostRead()
@@ -89,7 +100,7 @@ export function ComputerPanel({ botId }: { botId: string }) {
   return (
     <div className="computer">
       <div className="computer-head">
-        <span className="label">{botId}'s screen</span>
+        <span className="label">{label}'s screen</span>
         {mine && <span className="pill pill-live">you have control</span>}
         {!big && src && (
           <button className="icon-btn" onClick={() => setExpanded(true)} title="Open full size">⤢</button>
@@ -113,7 +124,7 @@ export function ComputerPanel({ botId }: { botId: string }) {
       {big && (
         <div className="screen-overlay">
           <div className="overlay-bar">
-            <span className="label">{botId}'s screen</span>
+            <span className="label">{label}'s screen</span>
             {mine
               ? <span className="pill pill-live">you have control — the bot is paused</span>
               : <span className="pill">watching</span>}

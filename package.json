@@ -10,7 +10,7 @@
     "start": "node packages/daemon/src/index.ts",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
-    "test": "node packages/daemon/test/ws-replay.test.ts"
+    "test": "node packages/daemon/test/ws-replay.test.ts && node packages/daemon/test/vault.test.ts"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

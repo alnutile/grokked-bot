@@ -135,6 +135,12 @@ export class Session {
 
   // ---------------------------------------------------------------- actions
 
+  /** Where the browser is, cheaply. The daemon checks this before typing a saved
+   *  password, so a secret only ever goes to its own site. */
+  async page_info() {
+    return this.envelope()
+  }
+
   async navigate({ url }) {
     this.assertAllowed(url)
     const page = this.page()
