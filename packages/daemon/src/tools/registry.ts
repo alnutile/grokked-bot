@@ -75,6 +75,18 @@ export const TOOLS: Tool[] = [
     risk: 'medium', approval: 'never', replaySafe: false, run: passthrough('type'),
   },
   {
+    name: 'browser_select',
+    description:
+      'Choose an option in a dropdown (a combobox or listbox in the snapshot, e.g. a native <select>) by its ' +
+      'visible label. Use this rather than clicking or typing into a dropdown. Returns a fresh snapshot.',
+    schema: S({
+      ref: z.string(),
+      element: z.string().describe('Name of the dropdown, in plain words.'),
+      values: z.array(z.string()).min(1).describe('Option label(s) to choose, e.g. ["House candidates"].'),
+    }),
+    risk: 'medium', approval: 'never', replaySafe: false, run: passthrough('select'),
+  },
+  {
     name: 'browser_find',
     description:
       'Find elements whose text matches a query when the snapshot was truncated or the element is off-screen. ' +
@@ -163,7 +175,10 @@ export const TOOLS: Tool[] = [
       text: z.string().optional(),
       reason: z.string().describe('Why a ref-based tool could not do this. Shown to the human approving.'),
     }),
-    risk: 'high', approval: 'always', replaySafe: false, run: passthrough('desktop_action'),
+    risk: 'high', approval: 'always', replaySafe: false,
+    // The shim request's own `action` names the shim action, so the desktop op
+    // travels as `op`. Sharing the key silently turned every call into a click.
+    run: ({ action, ...rest }: any, ctx: ToolCtx) => ctx.runtime.act('desktop_action', { ...rest, op: action }),
   },
 
   // ---------------------------------------------------------------- saved logins

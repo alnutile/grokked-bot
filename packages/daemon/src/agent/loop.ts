@@ -20,6 +20,10 @@ const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0
  *  stale pictures on every single call. */
 const KEEP_IMAGES = 2
 const TOOL_RESULT_CAP = 4000
+/** A page snapshot has to arrive whole: the button you need is often near the
+ *  end. Only the latest one is sent in full (see assembleMessages). */
+const SNAPSHOT_RESULT_CAP = 32000
+const SNAPSHOT_MARK = '# snapshot s'
 /** Earlier requests in a conversation ride along as one exchange each. */
 const HISTORY_RUNS = 20
 
@@ -156,6 +160,16 @@ function assembleMessages(db: Db, run: RunRow, botName: string, personaMd: strin
   }
 
   const parsed = rows.map((r) => ({ ...r, content: JSON.parse(r.content_json) as any }))
+
+  // Only the latest page snapshot is worth its tokens; older ones are stale by
+  // definition (their refs are rejected), so they collapse to a stub.
+  const snapIdx = parsed
+    .map((m, i) => (m.role === 'tool' && typeof m.content === 'string' && m.content.includes(SNAPSHOT_MARK) ? i : -1))
+    .filter((i) => i >= 0)
+  for (const i of snapIdx.slice(0, -1)) {
+    const c = parsed[i]!.content as string
+    parsed[i]!.content = c.slice(0, c.indexOf(SNAPSHOT_MARK)) + '[older page snapshot omitted; its refs are stale]'
+  }
   const imageIdx = parsed
     .map((m, i) => (Array.isArray(m.content) && m.content.some((p: any) => p.type === 'image_url') ? i : -1))
     .filter((i) => i >= 0)
@@ -408,8 +422,9 @@ async function dispatchTool(
   if (pageText) out = { ...out, text: wrapUntrusted(pageText) }
   const rendered = JSON.stringify(out)
   addMessage(db, run.thread_id, 'tool',
-    rendered.length > TOOL_RESULT_CAP
-      ? rendered.slice(0, TOOL_RESULT_CAP) + `\n…[truncated ${rendered.length - TOOL_RESULT_CAP} chars]`
+    rendered.length > (rendered.includes(SNAPSHOT_MARK) ? SNAPSHOT_RESULT_CAP : TOOL_RESULT_CAP)
+      ? rendered.slice(0, rendered.includes(SNAPSHOT_MARK) ? SNAPSHOT_RESULT_CAP : TOOL_RESULT_CAP) +
+        `\n…[truncated]`
       : rendered,
     { tool_call_id: call.id, run_id: runId, step_no: stepNo })
 

@@ -3,12 +3,11 @@ import { execFile, spawn } from 'node:child_process'
 import { readFile, writeFile, mkdir, readdir, stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
-import { collectSource, render } from './snapshot.js'
+import { aiSnapshot, refPattern } from './snapshot.js'
 
 const exec = promisify(execFile)
 const CDP = `http://127.0.0.1:${process.env.CDP_PORT || 9222}`
 const WORK_DIR = process.env.WORK_DIR || '/data/work'
-const MAX_NODES = 120
 
 export class Fail extends Error {
   constructor(code, message, recovery) {
@@ -80,9 +79,12 @@ export class Session {
     }
   }
 
+  /** s7e121 -> Playwright's aria-ref=e121 from snapshot 7. Only the latest
+   *  snapshot's refs resolve, which is what makes a stale ref a hard error. */
   async locate(ref) {
-    if (!/^s\d+e\d+$/.test(String(ref ?? ''))) throw new Fail('bad_ref', `not a ref: ${ref}`)
-    const gen = Number(String(ref).slice(1).split('e')[0])
+    const m = refPattern.exec(String(ref ?? ''))
+    if (!m) throw new Fail('bad_ref', `not a ref: ${ref}`)
+    const gen = Number(m[1])
     if (gen !== this.gen) {
       throw new Fail(
         'stale_ref',
@@ -90,8 +92,8 @@ export class Session {
         'snapshot',
       )
     }
-    const loc = this.page().locator(`[data-gref="${ref}"]`)
-    if ((await loc.count()) === 0) {
+    const loc = this.page().locator(`aria-ref=${m[2]}`)
+    if ((await loc.count().catch(() => 0)) === 0) {
       throw new Fail('stale_ref', `ref ${ref} no longer exists on the page`, 'snapshot')
     }
     return loc.first()
@@ -104,27 +106,25 @@ export class Session {
     // under us. That is a race, not a failure: settle and try once more.
     let result
     try {
-      result = await page.evaluate(collectSource, [this.gen, MAX_NODES])
+      result = await aiSnapshot(page, this.gen)
     } catch (e) {
-      if (!/Execution context was destroyed|Target closed|frame was detached/i.test(String(e?.message))) {
+      if (!/Execution context was destroyed|Target closed|frame was detached|navigat/i.test(String(e?.message))) {
         throw new Fail('snapshot_failed', e.message, 'screenshot')
       }
       await page.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => {})
       await page.waitForTimeout(400)
-      result = await page.evaluate(collectSource, [this.gen, MAX_NODES])
+      result = await aiSnapshot(page, this.gen)
         .catch((e2) => { throw new Fail('snapshot_failed', e2.message, 'screenshot') })
     }
-    const meta = { gen: this.gen, url: page.url(), title: await page.title().catch(() => '') }
-    const interactive = result.nodes.filter((n) => n.ref).length
-    const canvasHeavy = result.nodes.some((n) => n.role === 'canvas')
+    this.lastSnapshot = result.text
     return {
-      text: render(result, meta),
-      interactive,
-      // When the AX tree is barren the model cannot work from refs, so the caller
+      text: result.text,
+      interactive: result.refs,
+      // When the tree is barren the model cannot work from refs, so the caller
       // attaches a screenshot and unlocks the pixel escape hatch instead.
-      needs_vision: interactive < 5 || canvasHeavy,
-      url: meta.url,
-      title: meta.title,
+      needs_vision: result.refs < 5 || result.canvasHeavy,
+      url: result.url,
+      title: result.title,
     }
   }
 
@@ -182,65 +182,38 @@ export class Session {
     return this.envelope({ snapshot: (await this.snapshot()).text })
   }
 
+  /** Lines of a fresh snapshot that mention the query, with their refs. Takes a
+   *  new snapshot so the hits are actionable; earlier refs go stale. */
   async find({ query, role }) {
-    const page = this.page()
-    // find() matches against elements tagged by a snapshot, so calling it before
-    // any snapshot exists would always return not_found. Take one implicitly
-    // rather than making the model discover that by wasting a step.
-    if (this.gen === 0) await this.snapshot()
-    const matches = await page.evaluate(
-      ([q, r]) => {
-        const needle = q.toLowerCase()
-        const out = []
-        for (const el of document.querySelectorAll('[data-gref]')) {
-          const text = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim()
-          const elRole = (el.getAttribute('role') || el.tagName).toLowerCase()
-          if (!text.toLowerCase().includes(needle)) continue
-          if (r && !elRole.includes(r.toLowerCase())) continue
-          out.push({ ref: el.getAttribute('data-gref'), role: elRole, name: text.replace(/\s+/g, ' ').slice(0, 120) })
-          if (out.length >= 25) break
-        }
-        return out
-      },
-      [query, role ?? ''],
-    )
-    if (matches.length === 0) {
-      // Widen to the untagged DOM before giving up: the snapshot caps at 120
-      // nodes, so the element may be real but simply not in it. Tag the hits so
-      // they are immediately actionable.
-      const widened = await page.evaluate(
-        ([q, r, gen]) => {
-          const needle = q.toLowerCase()
-          const out = []
-          let n = 100000
-          for (const el of document.querySelectorAll('a,button,input,select,textarea,[role],th,td,li,span,label')) {
-            const text = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim()
-            if (!text || text.length > 200) continue
-            const elRole = (el.getAttribute('role') || el.tagName).toLowerCase()
-            if (!text.toLowerCase().includes(needle)) continue
-            if (r && !elRole.includes(r.toLowerCase())) continue
-            const rect = el.getBoundingClientRect()
-            if (rect.width < 1 || rect.height < 1) continue
-            const ref = `s${gen}e${++n}`
-            el.setAttribute('data-gref', ref)
-            out.push({ ref, role: elRole, name: text.replace(/\s+/g, ' ').slice(0, 120) })
-            if (out.length >= 20) break
-          }
-          return out
-        },
-        [query, role ?? '', this.gen],
-      )
-      if (widened.length === 0) {
-        throw new Fail('not_found', `nothing matching ${JSON.stringify(query)} on this page`, 'read_text')
-      }
-      return this.envelope({ matches: widened, note: 'found outside the snapshot; refs are usable' })
+    const snap = await this.snapshot()
+    const needle = String(query).toLowerCase()
+    const lines = snap.text.split('\n')
+    const matches = []
+    lines.forEach((line, i) => {
+      if (!line.toLowerCase().includes(needle)) return
+      if (role && !line.trimStart().startsWith(`- ${role}`)) return
+      // A bare text hit is usually the label inside something clickable: show
+      // the nearest line above it that has a ref.
+      let j = i
+      while (j > 0 && !lines[j].includes('[ref=')) j--
+      matches.push(lines[j] === line ? line.trim() : `${lines[j].trim()}  ⟶  ${line.trim()}`)
+    })
+    const unique = [...new Set(matches)].slice(0, 25)
+    if (unique.length === 0) {
+      throw new Fail('not_found', `nothing matching ${JSON.stringify(query)} on this page`, 'read_text')
     }
-    return this.envelope({ matches })
+    return this.envelope({ snapshot_gen: `s${this.gen}`, matches: unique, note: 'from a fresh snapshot; earlier refs are now stale' })
   }
 
   async read_text({ ref, max_chars = 6000 }) {
     const loc = ref ? await this.locate(ref) : this.page().locator('body')
-    const raw = await loc.innerText({ timeout: 15000 }).catch(() => '')
+    let raw = await loc.innerText({ timeout: 15000 }).catch(() => '')
+    // innerText misses text that lives in shadow roots (web-component sites).
+    // The accessibility snapshot sees it, so fall back to that, minus the refs.
+    if (!ref && raw.trim().length < 200) {
+      const snap = await aiSnapshot(this.page(), this.gen).catch(() => null)
+      if (snap && snap.text.length > raw.length) raw = snap.text.replace(/ \[ref=[^\]]+\]/g, '').replace(/ \[cursor=pointer\]/g, '')
+    }
     const text = raw.replace(/\n{3,}/g, '\n\n').trim()
     return this.envelope({
       text: text.slice(0, max_chars),
@@ -317,7 +290,10 @@ export class Session {
       )
       return this.envelope({ image_base64: stdout.toString('base64'), mime: 'image/jpeg', scope })
     }
-    const buf = await this.page().screenshot({ type: 'jpeg', quality: 70 })
+    // page.screenshot can hang on a page that never finishes loading fonts; the
+    // X display always answers, so fall back to it rather than lose the step.
+    const buf = await this.page().screenshot({ type: 'jpeg', quality: 70, timeout: 8000 }).catch(() => null)
+    if (!buf) return { ...(await this.screenshot({ scope: 'full_desktop' })), note: 'browser screenshot timed out; this is the whole desktop' }
     return this.envelope({ image_base64: buf.toString('base64'), mime: 'image/jpeg', scope })
   }
 
@@ -410,7 +386,10 @@ export class Session {
   }
 
   /** Last resort for canvas apps and native dialogs the CDP path cannot see. */
-  async desktop_action({ action, x, y, to_x, to_y, keys, text }) {
+  // `op`, not `action`: the request body's own `action` field names the shim
+  // action ("desktop_action"), and sharing the key used to overwrite it.
+  async desktop_action({ op, x, y, to_x, to_y, keys, text }) {
+    const action = op
     const args = {
       click: ['mousemove', String(x), String(y), 'click', '1'],
       double_click: ['mousemove', String(x), String(y), 'click', '--repeat', '2', '1'],
