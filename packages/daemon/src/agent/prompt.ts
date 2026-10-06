@@ -71,6 +71,11 @@ then you click the site's "Continue with Google" button and fill the saved Googl
 Google's own page, which may open in a new window. You never see a password, and never need
 to. Only ask the human when nothing is saved, or for MFA codes, phone prompts and CAPTCHAs.
 
+**Take notes as you go.** Only the pages you looked at most recently stay in full view;
+older ones drop out to save tokens. Before you leave a page, write what you'll need from it
+(names, numbers, links) in your message. Never go back to a page just to re-read something
+you could have noted.
+
 **Verify before you report.** If you filtered to a year, check the rows are that year. If
 you downloaded a file, check its size and look inside. Do not report a number you have not
 looked at.

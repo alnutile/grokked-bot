@@ -24,6 +24,9 @@ const TOOL_RESULT_CAP = 4000
  *  end. Only the latest one is sent in full (see assembleMessages). */
 const SNAPSHOT_RESULT_CAP = 46000  // the shim fits snapshots to 40k chars plus a section map
 const SNAPSHOT_MARK = '# snapshot s'
+const SNAPSHOT_URL = /# snapshot s\d+(?: of \S+)? \| (\S+) \|/
+/** Pages whose latest snapshot stays in full view (e.g. a results list and one result). */
+const KEEP_PAGES = 2
 /** Earlier requests in a conversation ride along as one exchange each. */
 const HISTORY_RUNS = 20
 
@@ -161,14 +164,29 @@ function assembleMessages(db: Db, run: RunRow, botName: string, personaMd: strin
 
   const parsed = rows.map((r) => ({ ...r, content: JSON.parse(r.content_json) as any }))
 
-  // Only the latest page snapshot is worth its tokens; older ones are stale by
-  // definition (their refs are rejected), so they collapse to a stub.
+  // Page snapshots are the bulk of the tokens, so older ones collapse to a stub.
+  // Keep the newest snapshot of each of the last KEEP_PAGES pages, though: with
+  // only the very latest kept, a bot comparing a results list with a job page
+  // lost one every time it opened the other, and Opus ping-ponged between them
+  // for 22 steps.
   const snapIdx = parsed
     .map((m, i) => (m.role === 'tool' && typeof m.content === 'string' && m.content.includes(SNAPSHOT_MARK) ? i : -1))
     .filter((i) => i >= 0)
-  for (const i of snapIdx.slice(0, -1)) {
+  const pageOf = (i: number) => SNAPSHOT_URL.exec(parsed[i]!.content as string)?.[1] ?? `#${i}`
+  const keepSnap = new Set<number>()
+  const seenPages: string[] = []
+  for (const i of [...snapIdx].reverse()) {
+    const page = pageOf(i)
+    if (seenPages.includes(page)) continue
+    if (seenPages.length >= KEEP_PAGES) break
+    seenPages.push(page)
+    keepSnap.add(i)
+  }
+  for (const i of snapIdx) {
+    if (keepSnap.has(i)) continue
     const c = parsed[i]!.content as string
-    parsed[i]!.content = c.slice(0, c.indexOf(SNAPSHOT_MARK)) + '[older page snapshot omitted; its refs are stale]'
+    parsed[i]!.content = c.slice(0, c.indexOf(SNAPSHOT_MARK)) +
+      `[older snapshot of ${pageOf(i)} omitted to save tokens; what you needed from it should be in your notes]`
   }
   const imageIdx = parsed
     .map((m, i) => (Array.isArray(m.content) && m.content.some((p: any) => p.type === 'image_url') ? i : -1))
@@ -393,6 +411,10 @@ async function dispatchTool(
     setState(db, bus, runId, 'failed', 'repetition_loop')
     return { done: true, state: 'failed', reason: `called ${tool.name} with identical arguments 5 times` }
   }
+  // Ping-pong: the last six actions alternate between just two. Identical-call
+  // counting misses it (each repeats only three times), so say so in the result.
+  const last6 = [sig, ...recent.map((r) => r.idem_key)].slice(0, 6)
+  const pingPong = last6.length === 6 && new Set(last6).size <= 2
 
   // ---- two-phase dispatch: record intent, act, record outcome ----
   db.prepare(
@@ -416,6 +438,11 @@ async function dispatchTool(
 
   db.prepare(`UPDATE run_steps SET status = ?, result_json = ?, ended_at = ? WHERE run_id = ? AND step_no = ?`)
     .run(out?.ok === false ? 'error' : 'ok', JSON.stringify(out).slice(0, 20000), now(), runId, stepNo)
+
+  if (pingPong && out && typeof out === 'object') {
+    out.warning = 'You have alternated between the same two actions six times. Stop and write down what you ' +
+      'already know, then either finish with it or try a different approach.'
+  }
 
   // Page-derived text is attacker-controlled. Fence it so it reads as data.
   const pageText = typeof out?.text === 'string' ? out.text : null
