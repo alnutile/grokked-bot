@@ -51,4 +51,26 @@ assert.equal(out.ok, true); assert.deepEqual(typed, [SECRET])
 assert.ok(!JSON.stringify(out).includes(SECRET))
 console.log('  ok  types on its own site, and the result hides the value')
 
+// ---- sign in with Google: the site's login points at a provider account
+const google = vault.create(db, { label: 'Google', url: 'https://accounts.google.com', username: 'al@gmail.com', password: 'g-secret' })
+const site = vault.create(db, { label: 'Acme', url: 'https://acme.example', sign_in_with: 'google', via_credential_id: google.id, password: 'ignored' })
+assert.equal(site.has_secret, false)  // an SSO site keeps no password of its own
+const steps = vault.forBotWithSteps(db, 'bot-a').find((c: any) => c.id === site.id) as any
+assert.equal(steps.sign_in_with, 'Google'); assert.equal(steps.provider_account.id, google.id)
+assert.match(steps.how_to_sign_in, /Continue with Google/)
+assert.ok(!JSON.stringify(vault.forBotWithSteps(db, 'bot-a')).includes('g-secret'))
+console.log('  ok  an SSO site lists its provider account and the steps, no secrets')
+
+pageUrl = 'https://acme.example/login'
+out = await fill({ credential_id: site.id, field: 'password', ref: 's1e2', element: 'Password' }, { runtime, runId: 'r', botId: 'bot-a', db })
+assert.equal(out.error, 'sign_in_with_provider'); assert.match(out.message, new RegExp(google.id))
+console.log('  ok  asking for an SSO site password points at the provider instead')
+
+out = await fill({ credential_id: google.id, field: 'password', ref: 's1e2', element: 'Password' }, { runtime, runId: 'r', botId: 'bot-a', db })
+assert.equal(out.error, 'wrong_site')
+pageUrl = 'https://accounts.google.com/signin/v2'
+out = await fill({ credential_id: google.id, field: 'password', ref: 's1e2', element: 'Password' }, { runtime, runId: 'r', botId: 'bot-a', db })
+assert.equal(out.ok, true); assert.equal(typed.at(-1), 'g-secret')
+console.log("  ok  the Google password is typed only on Google's pages")
+
 console.log('\nall passed')

@@ -185,17 +185,12 @@ export const TOOLS: Tool[] = [
   {
     name: 'credentials_list',
     description:
-      'List the logins the human has saved for you: label, site, username and an id. Passwords are never ' +
-      'shown to you. Check this before asking the human to sign you in.',
+      'List the logins the human has saved for you, each with how_to_sign_in: the exact steps for that site, ' +
+      'including sites that sign in with Google or another provider. Passwords are never shown to you. ' +
+      'Check this before asking the human to sign you in, and follow how_to_sign_in.',
     schema: S({}),
     risk: 'low', approval: 'never', replaySafe: true,
-    run: async (_args, ctx) => ({
-      ok: true,
-      credentials: vault.forBot(ctx.db, ctx.botId).map((c) => ({
-        id: c.id, label: c.label, site: c.domain, url: c.url || undefined,
-        username: c.username || undefined, has_password: c.has_secret, notes: c.notes || undefined,
-      })),
-    }),
+    run: async (_args, ctx) => ({ ok: true, credentials: vault.forBotWithSteps(ctx.db, ctx.botId) }),
   },
   {
     name: 'browser_fill_credential',
@@ -211,6 +206,15 @@ export const TOOLS: Tool[] = [
     }),
     risk: 'medium', approval: 'never', replaySafe: false,
     run: async (args, ctx) => {
+      const sso = vault.ssoSiteFor(ctx.db, args.credential_id)
+      if (sso) {
+        return {
+          ok: false, error: 'sign_in_with_provider',
+          message: `${sso.label} has no password of its own; it signs in with ${sso.sign_in_with}. Click its ` +
+            `${sso.sign_in_with} button, then fill the provider account` +
+            (sso.via_credential_id ? ` (credential ${sso.via_credential_id}) on the provider's page.` : '; none is saved, so ask_human.'),
+        }
+      }
       const c = vault.secretFor(ctx.db, args.credential_id, ctx.botId)
       if (!c) return { ok: false, error: 'no_such_credential', message: 'No saved login with that id is available to you.' }
       const text = args.field === 'username' ? c.row.username : c.secret

@@ -120,6 +120,11 @@ password. When a bot hits that site's sign-in page it fills them in itself — t
 typed by the daemon, so the AI model never sees it, and it's only ever typed on that site.
 You can limit each login to particular bots.
 
+For sites that use **Sign in with Google** (or Microsoft, Apple, GitHub), save your Google
+account once as its own login, then set the site's login to *Sign in with Google* and link
+that account. The bot clicks the site's Google button, follows the popup, and fills your
+Google account on Google's own pages; MFA codes and phone prompts come back to you.
+
 **Settings** also holds the default budget and limits, and which models do the work; any
 bot can override the model in its **Details**.
 

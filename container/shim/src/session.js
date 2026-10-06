@@ -31,6 +31,15 @@ export class Session {
         this.#browser = await chromium.connectOverCDP(CDP)
         this.#context = this.#browser.contexts()[0]
         this.#page = this.#context.pages()[0] ?? (await this.#context.newPage())
+        // Follow new windows the moment they open: "Sign in with Google" and
+        // target=_blank links both land in one, and acting on the old page
+        // meanwhile is acting on the wrong thing. Closing it falls back (page()).
+        this.#context.on('page', (p) => {
+          this.#page = p
+          this.windowNote = 'A new window opened and you are now in it. Snapshot before acting; when it closes you return to the previous one.'
+          void p.bringToFront().catch(() => {})
+          p.on('close', () => { this.windowNote = 'That window closed; you are back in the previous one. Snapshot before acting.' })
+        })
         await this.#page.setViewportSize?.({
           width: Number(process.env.SCREEN_WIDTH || 1280),
           height: Number(process.env.SCREEN_HEIGHT || 800),
@@ -53,9 +62,12 @@ export class Session {
   }
 
   page() {
-    // Follow the frontmost page: clicking a target="_blank" link opens a new one.
+    // If the current window closed (an SSO popup finishing), fall back to the newest one left.
     const pages = this.#context?.pages() ?? []
-    if (pages.length && !pages.includes(this.#page)) this.#page = pages[pages.length - 1]
+    if (pages.length && !pages.includes(this.#page)) {
+      this.#page = pages[pages.length - 1]
+      void this.#page.bringToFront().catch(() => {})
+    }
     if (!this.#page) throw new Fail('no_page', 'no open page')
     return this.#page
   }
@@ -130,7 +142,9 @@ export class Session {
 
   async envelope(extra = {}) {
     const page = this.page()
-    return { ok: true, url: page.url(), title: await page.title().catch(() => ''), ...extra }
+    const note = this.windowNote
+    this.windowNote = undefined
+    return { ok: true, url: page.url(), title: await page.title().catch(() => ''), ...(note ? { window: note } : {}), ...extra }
   }
 
   // ---------------------------------------------------------------- actions

@@ -55,8 +55,11 @@ export interface ModelInfo { id: string; name: string; context_length: number; p
 export interface Credential {
   id: string; label: string; url: string; domain: string; username: string
   notes: string; bot_ids: string[]; has_secret: boolean; updated_at: number
+  /** '' = its own password; else the provider it signs in with (google, microsoft, …). */
+  sign_in_with: string
+  via_credential_id: string
 }
-export type CredentialInput = Partial<Pick<Credential, 'label' | 'url' | 'username' | 'notes' | 'bot_ids'>> & { password?: string }
+export type CredentialInput = Partial<Pick<Credential, 'label' | 'url' | 'username' | 'notes' | 'bot_ids' | 'sign_in_with' | 'via_credential_id'>> & { password?: string }
 
 export interface BotFile { path: string; abs: string; size: number; mtime: number }
 /** A chat line rebuilt by the daemon from SQLite. */

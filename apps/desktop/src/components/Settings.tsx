@@ -4,6 +4,14 @@ import { Avatar } from './Avatar.tsx'
 
 type Section = 'general' | 'models' | 'passwords'
 
+const PROVIDERS = [
+  { id: 'google', label: 'Google', site: 'accounts.google.com' },
+  { id: 'microsoft', label: 'Microsoft', site: 'login.microsoftonline.com' },
+  { id: 'apple', label: 'Apple', site: 'appleid.apple.com' },
+  { id: 'github', label: 'GitHub', site: 'github.com/login' },
+]
+const providerLabel = (id: string) => PROVIDERS.find((p) => p.id === id)?.label ?? id
+
 /** Everything that isn't one bot: spending defaults, models, and saved logins. */
 export function Settings({ bots, onClose }: { bots: Bot[]; onClose: () => void }) {
   const [section, setSection] = useState<Section>('general')
@@ -159,7 +167,7 @@ function Passwords({ bots }: { bots: Bot[] }) {
   const botName = (id: string) => bots.find((b) => b.id === id)?.name ?? id
 
   if (editing) {
-    return <CredentialForm cred={editing === 'new' ? null : editing} bots={bots}
+    return <CredentialForm cred={editing === 'new' ? null : editing} bots={bots} all={list ?? []}
       onDone={() => { setEditing(null); void load() }} />
   }
 
@@ -180,7 +188,12 @@ function Passwords({ bots }: { bots: Bot[] }) {
           <span className="cred-icon">{c.label.slice(0, 1).toUpperCase()}</span>
           <span className="cred-meta">
             <span className="cred-label">{c.label}</span>
-            <span className="field-hint">{c.domain}{c.username ? ` · ${c.username}` : ''}{c.has_secret ? '' : ' · no password'}</span>
+            <span className="field-hint">
+              {c.domain}
+              {c.sign_in_with
+                ? ` · signs in with ${providerLabel(c.sign_in_with)}${c.via_credential_id ? ` (${list?.find((x) => x.id === c.via_credential_id)?.username || 'linked'})` : ' — no account linked'}`
+                : `${c.username ? ` · ${c.username}` : ''}${c.has_secret ? '' : ' · no password'}`}
+            </span>
           </span>
           <span className="cred-bots">{c.bot_ids.length ? c.bot_ids.map(botName).join(', ') : 'All bots'}</span>
         </button>
@@ -189,7 +202,9 @@ function Passwords({ bots }: { bots: Bot[] }) {
   )
 }
 
-function CredentialForm({ cred, bots, onDone }: { cred: Credential | null; bots: Bot[]; onDone: () => void }) {
+function CredentialForm({ cred, bots, all, onDone }: { cred: Credential | null; bots: Bot[]; all: Credential[]; onDone: () => void }) {
+  const [signInWith, setSignInWith] = useState(cred?.sign_in_with ?? '')
+  const [via, setVia] = useState(cred?.via_credential_id ?? '')
   const [label, setLabel] = useState(cred?.label ?? '')
   const [url, setUrl] = useState(cred?.url || cred?.domain || '')
   const [username, setUsername] = useState(cred?.username ?? '')
@@ -209,8 +224,11 @@ function CredentialForm({ cred, bots, onDone }: { cred: Credential | null; bots:
 
   const submit = async () => {
     if (!url.trim()) { setErr('Which site is this for?'); return }
-    const body: CredentialInput = { label, url, username, notes, bot_ids: botIds }
-    if (password || !cred) body.password = password
+    const body: CredentialInput = { label, url, notes, bot_ids: botIds, sign_in_with: signInWith, via_credential_id: signInWith ? via : '' }
+    if (!signInWith) {
+      body.username = username
+      if (password || !cred) body.password = password
+    }
     try {
       if (cred) await api.updateCredential(cred.id, body)
       else await api.createCredential(body)
@@ -231,17 +249,48 @@ function CredentialForm({ cred, bots, onDone }: { cred: Credential | null; bots:
       <label className="field"><span className="field-label">Name</span>
         <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. LinkedIn (work)" />
       </label>
-      <label className="field"><span className="field-label">Username or email</span>
+      <div className="field"><span className="field-label">How do you sign in?</span>
+        <div className="bot-checks">
+          <button className={`chip ${!signInWith ? 'chip-on' : ''}`} onClick={() => setSignInWith('')}>Username &amp; password</button>
+          {PROVIDERS.map((p) => (
+            <button key={p.id} className={`chip ${signInWith === p.id ? 'chip-on' : ''}`} onClick={() => setSignInWith(p.id)}>
+              Sign in with {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {signInWith ? (() => {
+        const p = PROVIDERS.find((x) => x.id === signInWith)!
+        // Suggest saved logins on the provider's own site first.
+        const accounts = all.filter((c) => c.id !== cred?.id && !c.sign_in_with)
+          .sort((a, b) => Number(b.domain.includes(p.id)) - Number(a.domain.includes(p.id)))
+        return (
+          <div className="field"><span className="field-label">Which {p.label} account</span>
+            <select className="select" value={via} onChange={(e) => setVia(e.target.value)}>
+              <option value="">— choose a saved login —</option>
+              {accounts.map((c) => <option key={c.id} value={c.id}>{c.label}{c.username ? ` (${c.username})` : ''} · {c.domain}</option>)}
+            </select>
+            <span className="field-hint">
+              Save your {p.label} account once as its own login (site <code>{p.site}</code>) and link it here. Every
+              site that uses {p.label} can then share it; the password is still only typed on {p.label}'s own pages.
+            </span>
+          </div>
+        )
+      })() : (
+        <>
+        <label className="field"><span className="field-label">Username or email</span>
         <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
-      </label>
-      <div className="field"><span className="field-label">Password</span>
+        </label>
+        <div className="field"><span className="field-label">Password</span>
         <div className="pw-row">
           <input type={shown ? 'text' : 'password'} value={password} autoComplete="new-password"
             placeholder={cred?.has_secret ? '•••••••• saved — type to change' : ''}
             onChange={(e) => setPassword(e.target.value)} />
           {(cred?.has_secret || password) && <button className="btn btn-ghost btn-sm" onClick={reveal}>{shown ? 'Hide' : 'Show'}</button>}
         </div>
-      </div>
+        </div>
+        </>
+      )}
       <label className="field"><span className="field-label">Notes for the bot</span>
         <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
           placeholder="e.g. Sign in with email, not phone. MFA goes to my phone — ask me." />

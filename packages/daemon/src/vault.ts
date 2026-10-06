@@ -51,20 +51,31 @@ export const hostMatches = (host: string, domain: string) => {
   return h === domain || h.endsWith(`.${domain}`)
 }
 
+/** Single sign-on providers a site's login can defer to. */
+export const PROVIDERS: Record<string, string> = {
+  google: 'Google', microsoft: 'Microsoft', apple: 'Apple', github: 'GitHub',
+}
+
 type Row = {
   id: string; label: string; url: string; domain: string; username: string; secret_enc: string
   notes: string; bot_ids_json: string; created_at: number; updated_at: number
+  sign_in_with: string; via_credential_id: string
 }
 
 /** The shape everyone but the fill tool gets: no secret, just whether one is set. */
 export interface CredentialInfo {
   id: string; label: string; url: string; domain: string; username: string
   notes: string; bot_ids: string[]; has_secret: boolean; updated_at: number
+  /** '' = its own username and password; otherwise the SSO provider it uses. */
+  sign_in_with: string
+  /** The saved provider account (another credential) used to sign in. */
+  via_credential_id: string
 }
 
 const info = (r: Row): CredentialInfo => ({
   id: r.id, label: r.label, url: r.url, domain: r.domain, username: r.username, notes: r.notes,
   bot_ids: JSON.parse(r.bot_ids_json || '[]'), has_secret: !!r.secret_enc, updated_at: r.updated_at,
+  sign_in_with: r.sign_in_with, via_credential_id: r.via_credential_id,
 })
 
 const usableBy = (r: Row, botId: string) => {
@@ -75,6 +86,11 @@ const usableBy = (r: Row, botId: string) => {
 export interface CredentialInput {
   label?: string; url?: string; domain?: string; username?: string
   password?: string; notes?: string; bot_ids?: string[]
+  sign_in_with?: string; via_credential_id?: string
+}
+
+function checkSso(b: CredentialInput): void {
+  if (b.sign_in_with && !PROVIDERS[b.sign_in_with]) throw new Error(`unknown sign-in provider: ${b.sign_in_with}`)
 }
 
 export const vault = {
@@ -91,12 +107,16 @@ export const vault = {
     const id = `cred_${randomUUID().replaceAll('-', '').slice(0, 12)}`
     const domain = domainOf(b.domain || b.url || '')
     if (!domain) throw new Error('a site (url or domain) is required')
+    checkSso(b)
+    const sso = b.sign_in_with ?? ''
     const t = Date.now()
     db.prepare(
-      `INSERT INTO credentials (id, label, url, domain, username, secret_enc, notes, bot_ids_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, b.label?.trim() || domain, b.url ?? '', domain, b.username ?? '',
-          b.password ? encrypt(b.password) : '', b.notes ?? '', JSON.stringify(b.bot_ids ?? []), t, t)
+      `INSERT INTO credentials (id, label, url, domain, username, secret_enc, notes, bot_ids_json,
+                                sign_in_with, via_credential_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, b.label?.trim() || domain, b.url ?? '', domain, sso ? '' : b.username ?? '',
+          !sso && b.password ? encrypt(b.password) : '', b.notes ?? '', JSON.stringify(b.bot_ids ?? []),
+          sso, sso ? b.via_credential_id ?? '' : '', t, t)
     return info(db.prepare('SELECT * FROM credentials WHERE id = ?').get(id) as Row)
   },
 
@@ -104,23 +124,71 @@ export const vault = {
     const r = db.prepare('SELECT * FROM credentials WHERE id = ?').get(id) as Row | undefined
     if (!r) return null
     const domain = b.domain !== undefined || b.url !== undefined ? domainOf(b.domain || b.url || '') || r.domain : r.domain
+    checkSso(b)
+    const sso = b.sign_in_with ?? r.sign_in_with
+    // Switching to SSO drops the site's own username and password: it has none.
     db.prepare(
       `UPDATE credentials SET label = ?, url = ?, domain = ?, username = ?, secret_enc = ?, notes = ?,
-                              bot_ids_json = ?, updated_at = ? WHERE id = ?`,
-    ).run(b.label?.trim() || r.label, b.url ?? r.url, domain, b.username ?? r.username,
-          b.password !== undefined ? (b.password ? encrypt(b.password) : '') : r.secret_enc,
-          b.notes ?? r.notes, b.bot_ids ? JSON.stringify(b.bot_ids) : r.bot_ids_json, Date.now(), id)
+                              bot_ids_json = ?, sign_in_with = ?, via_credential_id = ?, updated_at = ? WHERE id = ?`,
+    ).run(b.label?.trim() || r.label, b.url ?? r.url, domain, sso ? '' : b.username ?? r.username,
+          sso ? '' : b.password !== undefined ? (b.password ? encrypt(b.password) : '') : r.secret_enc,
+          b.notes ?? r.notes, b.bot_ids ? JSON.stringify(b.bot_ids) : r.bot_ids_json,
+          sso, sso ? b.via_credential_id ?? r.via_credential_id : '', Date.now(), id)
     return info(db.prepare('SELECT * FROM credentials WHERE id = ?').get(id) as Row)
   },
 
   remove(db: Db, id: string): void {
     db.prepare('DELETE FROM credentials WHERE id = ?').run(id)
+    // Sites that signed in through this account keep their SSO choice but lose the link.
+    db.prepare(`UPDATE credentials SET via_credential_id = '' WHERE via_credential_id = ?`).run(id)
+  },
+
+  /**
+   * What the bot gets from credentials_list: no secrets, and for each login the
+   * exact steps to sign in. The procedure lives here, next to the data, so the
+   * bot reads it at the moment it needs it.
+   */
+  forBotWithSteps(db: Db, botId: string) {
+    const mine = vault.forBot(db, botId)
+    const byId = new Map(mine.map((c) => [c.id, c]))
+    return mine.map((c) => {
+      const base = { id: c.id, label: c.label, site: c.domain, url: c.url || undefined, notes: c.notes || undefined }
+      if (!c.sign_in_with) {
+        return {
+          ...base, username: c.username || undefined, has_password: c.has_secret,
+          how_to_sign_in: `On ${c.domain}'s sign-in page, browser_fill_credential(${c.id}, username) into the email/username ` +
+            `field and (${c.id}, password) into the password field, then click its sign-in button. If the password ` +
+            'field only appears after you submit the username, snapshot again before filling it.',
+        }
+      }
+      const provider = PROVIDERS[c.sign_in_with] ?? c.sign_in_with
+      const via = byId.get(c.via_credential_id)
+      return {
+        ...base, sign_in_with: provider,
+        provider_account: via ? { id: via.id, label: via.label, site: via.domain, username: via.username || undefined } : undefined,
+        how_to_sign_in: via
+          ? `${c.domain} has no password of its own: sign in with ${provider}. On its sign-in page click the ` +
+            `"Continue with ${provider}" / "Sign in with ${provider}" button (it may open a new window — you are moved ` +
+            `into it automatically). On ${via.domain}: if ${via.username || 'the account'} is listed, click it; otherwise ` +
+            `browser_fill_credential(${via.id}, username), click Next, snapshot, then browser_fill_credential(${via.id}, password) ` +
+            `and click Next. Approve any consent screen for ${c.domain} only if it is what was asked. If ${provider} asks ` +
+            'for a code, a phone prompt or a CAPTCHA, call ask_human.'
+          : `${c.domain} signs in with ${provider}, but no ${provider} account is saved for you. Click the ` +
+            `${provider} button; if you are not already signed in to ${provider}, call ask_human.`,
+      }
+    })
   },
 
   /** For the human, in Settings. */
   reveal(db: Db, id: string): string | null {
     const r = db.prepare('SELECT secret_enc FROM credentials WHERE id = ?').get(id) as { secret_enc: string } | undefined
     return r ? decrypt(r.secret_enc) : null
+  },
+
+  /** For the fill tool: the site login this one is the provider account for, if any. */
+  ssoSiteFor(db: Db, id: string): CredentialInfo | null {
+    const r = db.prepare(`SELECT * FROM credentials WHERE id = ? AND sign_in_with != ''`).get(id) as Row | undefined
+    return r ? info(r) : null
   },
 
   /** For the fill tool only: the credential if this bot may use it. */

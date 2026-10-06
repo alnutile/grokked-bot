@@ -288,3 +288,6 @@ button { font: inherit; }
 .chip-on { border-color: var(--accent); color: var(--text); }
 .form-actions { display: flex; align-items: center; gap: 8px; }
 .btn-danger { background: var(--bad); color: #fff; }
+.select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+          padding: 8px 10px; font: inherit; font-size: 13px; outline: none; }
+.select:focus { border-color: var(--accent); }
