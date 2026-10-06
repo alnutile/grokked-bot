@@ -3,7 +3,7 @@ import { execFile, spawn } from 'node:child_process'
 import { readFile, writeFile, mkdir, readdir, stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
-import { aiSnapshot, refPattern } from './snapshot.js'
+import { aiSnapshot, fullSnapshot, refPattern } from './snapshot.js'
 
 const exec = promisify(execFile)
 const CDP = `http://127.0.0.1:${process.env.CDP_PORT || 9222}`
@@ -91,44 +91,42 @@ export class Session {
     }
   }
 
-  /** s7e121 -> Playwright's aria-ref=e121 from snapshot 7. Only the latest
-   *  snapshot's refs resolve, which is what makes a stale ref a hard error. */
+  /** s7e121 -> Playwright's aria-ref=e121. Playwright keeps an element's ref
+   *  stable across snapshots, so any ref works while its element is on the page;
+   *  a vanished element is a hard stale_ref, never a click on something else.
+   *  (The aria-ref engine resolves against the latest full snapshot, which is
+   *  why scoped snapshots and find() always take a full one underneath.) */
   async locate(ref) {
     const m = refPattern.exec(String(ref ?? ''))
     if (!m) throw new Fail('bad_ref', `not a ref: ${ref}`)
-    const gen = Number(m[1])
-    if (gen !== this.gen) {
-      throw new Fail(
-        'stale_ref',
-        `ref ${ref} is from snapshot s${gen}; current is s${this.gen}`,
-        'snapshot',
-      )
-    }
     const loc = this.page().locator(`aria-ref=${m[2]}`)
     if ((await loc.count().catch(() => 0)) === 0) {
-      throw new Fail('stale_ref', `ref ${ref} no longer exists on the page`, 'snapshot')
+      throw new Fail('stale_ref', `ref ${ref} is no longer on the page (it changed); take a fresh snapshot`, 'snapshot')
     }
     return loc.first()
   }
 
-  async snapshot() {
+  async snapshot({ ref } = {}) {
     const page = this.page()
     this.gen += 1
+    const scope = ref ? refPattern.exec(String(ref))?.[2] && String(ref).replace(/^s\d+/, `s${this.gen}`) : null
+    if (ref && !scope) throw new Fail('bad_ref', `not a ref: ${ref}`)
     // A click that triggers navigation tears down the execution context out from
     // under us. That is a race, not a failure: settle and try once more.
     let result
     try {
-      result = await aiSnapshot(page, this.gen)
+      result = await aiSnapshot(page, this.gen, scope)
     } catch (e) {
       if (!/Execution context was destroyed|Target closed|frame was detached|navigat/i.test(String(e?.message))) {
         throw new Fail('snapshot_failed', e.message, 'screenshot')
       }
       await page.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => {})
       await page.waitForTimeout(400)
-      result = await aiSnapshot(page, this.gen)
+      result = await aiSnapshot(page, this.gen, scope)
         .catch((e2) => { throw new Fail('snapshot_failed', e2.message, 'screenshot') })
     }
-    this.lastSnapshot = result.text
+    if (result.missingScope) throw new Fail('stale_ref', `${ref} is no longer on the page; take a full snapshot`, 'snapshot')
+    this.lastSnapshot = result.full
     return {
       text: result.text,
       interactive: result.refs,
@@ -196,12 +194,12 @@ export class Session {
     return this.envelope({ snapshot: (await this.snapshot()).text })
   }
 
-  /** Lines of a fresh snapshot that mention the query, with their refs. Takes a
-   *  new snapshot so the hits are actionable; earlier refs go stale. */
+  /** Lines of the whole page (never the cut-down snapshot) that mention the
+   *  query, with their refs. Refs from earlier snapshots stay valid. */
   async find({ query, role }) {
-    const snap = await this.snapshot()
+    await this.snapshot()
     const needle = String(query).toLowerCase()
-    const lines = snap.text.split('\n')
+    const lines = this.lastSnapshot.split('\n')
     const matches = []
     lines.forEach((line, i) => {
       if (!line.toLowerCase().includes(needle)) return
@@ -212,11 +210,18 @@ export class Session {
       while (j > 0 && !lines[j].includes('[ref=')) j--
       matches.push(lines[j] === line ? line.trim() : `${lines[j].trim()}  ⟶  ${line.trim()}`)
     })
-    const unique = [...new Set(matches)].slice(0, 25)
+    // One entry per element: a link and its own /url line would otherwise both match.
+    const seen = new Set()
+    const unique = matches.filter((m) => {
+      const ref = /\[ref=([^\]]+)\]/.exec(m)?.[1] ?? m
+      if (seen.has(ref)) return false
+      seen.add(ref)
+      return true
+    }).slice(0, 25)
     if (unique.length === 0) {
       throw new Fail('not_found', `nothing matching ${JSON.stringify(query)} on this page`, 'read_text')
     }
-    return this.envelope({ snapshot_gen: `s${this.gen}`, matches: unique, note: 'from a fresh snapshot; earlier refs are now stale' })
+    return this.envelope({ matches: unique })
   }
 
   async read_text({ ref, max_chars = 6000 }) {
@@ -225,8 +230,8 @@ export class Session {
     // innerText misses text that lives in shadow roots (web-component sites).
     // The accessibility snapshot sees it, so fall back to that, minus the refs.
     if (!ref && raw.trim().length < 200) {
-      const snap = await aiSnapshot(this.page(), this.gen).catch(() => null)
-      if (snap && snap.text.length > raw.length) raw = snap.text.replace(/ \[ref=[^\]]+\]/g, '').replace(/ \[cursor=pointer\]/g, '')
+      const snap = await fullSnapshot(this.page(), this.gen).catch(() => null)
+      if (snap && snap.text.length > raw.length) raw = snap.text.replace(/ \[ref=[^\]]+\]/g, '')
     }
     const text = raw.replace(/\n{3,}/g, '\n\n').trim()
     return this.envelope({

@@ -22,7 +22,7 @@ const KEEP_IMAGES = 2
 const TOOL_RESULT_CAP = 4000
 /** A page snapshot has to arrive whole: the button you need is often near the
  *  end. Only the latest one is sent in full (see assembleMessages). */
-const SNAPSHOT_RESULT_CAP = 32000
+const SNAPSHOT_RESULT_CAP = 46000  // the shim fits snapshots to 40k chars plus a section map
 const SNAPSHOT_MARK = '# snapshot s'
 /** Earlier requests in a conversation ride along as one exchange each. */
 const HISTORY_RUNS = 20

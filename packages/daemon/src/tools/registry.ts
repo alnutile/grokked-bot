@@ -41,17 +41,18 @@ export const TOOLS: Tool[] = [
   {
     name: 'browser_snapshot',
     description:
-      'Get the accessibility outline of the current page: every interactive element with a stable [ref=...]. ' +
-      'Call before your first interaction with a page and after anything that changes it. ' +
+      'Get the accessibility outline of the current page: every element with a [ref=...]. Call before your ' +
+      'first interaction with a page and after anything that changes it. A long page is cut short and ends ' +
+      'with a list of the sections that did not fit — pass one of their refs as `ref` to see just that part. ' +
       'Returns text, not an image — prefer this over browser_screenshot.',
-    schema: S({}),
+    schema: S({ ref: z.string().optional().describe('Snapshot only this element and what is inside it.') }),
     risk: 'low', approval: 'never', replaySafe: true, run: passthrough('snapshot'),
   },
   {
     name: 'browser_click',
     description:
-      'Click an element by ref from the MOST RECENT snapshot. Waits for it to be visible, stable and enabled. ' +
-      'Refs from older snapshots are rejected.',
+      'Click an element by ref. Waits for it to be visible, stable and enabled. A ref keeps working while its ' +
+      'element is on the page; if the page changed and it is gone you get stale_ref — snapshot again.',
     schema: S({
       ref: z.string().describe("A ref from the current snapshot, e.g. 's7e21'."),
       element: z.string().describe("What you are clicking, in plain words, e.g. 'Save button'. Shown in the log and to the human."),
@@ -89,8 +90,8 @@ export const TOOLS: Tool[] = [
   {
     name: 'browser_find',
     description:
-      'Find elements whose text matches a query when the snapshot was truncated or the element is off-screen. ' +
-      'Returns refs. Much cheaper than a screenshot.',
+      'Search the WHOLE page (including parts a long snapshot left out) for elements whose text matches, and ' +
+      'get their refs. Use it for a specific button or link, e.g. "Apply now". Much cheaper than a screenshot.',
     schema: S({ query: z.string(), role: z.string().optional().describe("Optional role filter, e.g. 'button'.") }),
     risk: 'low', approval: 'never', replaySafe: true, run: passthrough('find'),
   },

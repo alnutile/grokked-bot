@@ -122,7 +122,7 @@ const server = createServer(async (req, res) => {
     try {
       const started = Date.now()
       const result = action === 'snapshot'
-        ? await session.envelope(await session.snapshot())
+        ? await session.envelope(await session.snapshot(args))
         : await session[action](args)
       return json(res, 200, { ...result, took_ms: Date.now() - started })
     } catch (err) {
