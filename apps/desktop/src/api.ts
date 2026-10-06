@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
-const BASE = 'http://127.0.0.1:8787'
+// Overridable so the UI can be pointed at a second, throwaway daemon in dev.
+const BASE: string = (import.meta as any).env?.VITE_DAEMON_URL ?? 'http://127.0.0.1:8787'
 let TOKEN = ''
 
 export async function initToken(): Promise<void> {
@@ -91,7 +92,22 @@ export interface Run {
   outcome: string | null; outcome_summary: string | null; created_at: number
 }
 
+export interface SystemStatus {
+  platform: string
+  docker: 'missing' | 'not_running' | 'ok'
+  docker_detail: string | null
+  image: string
+  image_state: 'missing' | 'pulling' | 'present' | 'failed' | null
+  pull_progress: string | null
+  pull_error: string | null
+  openrouter_key: boolean
+}
+
 export const api = {
+  system: () => req<SystemStatus>('/v1/system'),
+  pull: () => req<{ ok: boolean }>('/v1/system/pull', { method: 'POST' }),
+  setKey: (key: string) =>
+    req<{ ok: boolean }>('/v1/system/openrouter-key', { method: 'POST', body: JSON.stringify({ key }) }),
   health: () => req<{ ok: boolean; version: string; active_runs: number }>('/v1/health'),
   bots: () => req<{ bots: Bot[] }>('/v1/bots').then((r) => r.bots),
   createBot: (name: string, persona_md = '') =>
@@ -186,7 +202,7 @@ export function connect(onFrame: (f: Frame) => void, onStatus: (s: 'up' | 'down'
 
   const open = () => {
     if (closed) return
-    ws = new WebSocket(`ws://127.0.0.1:8787/v1/stream?token=${encodeURIComponent(TOKEN)}&since=${since}`)
+    ws = new WebSocket(`${BASE.replace(/^http/, 'ws')}/v1/stream?token=${encodeURIComponent(TOKEN)}&since=${since}`)
     ws.onopen = () => {
       onStatus('up')
       ws?.send(JSON.stringify({ type: 'subscribe', topics: [...topics] }))

@@ -322,3 +322,18 @@ button { font: inherit; }
 .remote-card p { margin: 0; line-height: 1.5; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; font-size: 13px; }
 .conv-trigger { color: var(--warn); }
+
+/* ---------- first-run setup ---------- */
+.setup { max-width: 520px; margin: 0 auto; }
+.steps { list-style: none; padding: 0; margin: 8px 0 0; width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.steps li { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+            display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.steps li p { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.45; }
+.steps li.done { border-color: var(--good); }
+.steps li.done strong::before { content: '✓ '; color: var(--good); }
+.steps a { color: var(--accent); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+.key-row { display: flex; gap: 8px; width: 100%; }
+.key-row input { flex: 1; min-width: 0; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+                 border-radius: 8px; padding: 7px 10px; font: inherit; }
+.key-row input:focus { outline: none; border-color: var(--accent); }

@@ -16,7 +16,31 @@ the table and answered in three steps for about five cents — and said which vi
 read, so you know what to ask for next. On the right is its live screen, with a human
 holding control.
 
-## Quick start
+## On a Mac
+
+Download the `.dmg` for your Mac (Apple Silicon or Intel) from the releases page, drag
+**Grokked Bot** to Applications, and open it. The app walks you through the rest:
+
+1. **Docker.** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   (or OrbStack) and open it once. This is the only other thing to install: it supplies
+   the Linux VM that each bot's computer runs in.
+2. **The bot's computer.** A one-time ~5 GB download, started from the app.
+3. **An OpenRouter key.** Pasted into the app, checked, saved to
+   `~/Library/Application Support/Grokked/env`.
+
+The app ships its own Node and runs the daemon itself, so nothing else needs installing.
+Two differences from Linux: **bots stop when you quit the app** (no launchd agent yet),
+and on Apple Silicon the bot's Chrome runs under Rosetta, so it's a bit slower.
+
+The builds are ad-hoc signed, not notarized, so the first launch is blocked by macOS.
+Open **System Settings → Privacy & Security** and click **Open Anyway**, once.
+
+Building the `.dmg`: `scripts/build-mac.sh` on a Mac, or run the `release` workflow in
+GitHub Actions, which also publishes the bot computer image to
+`ghcr.io/alnutile/grokked-computer`. That package is private when first pushed: make it
+public in its GitHub package settings, or every user needs `docker login ghcr.io`.
+
+## Quick start (Linux)
 
 Tested on Ubuntu with Node 24. Nothing below needs root except installing system packages.
 
@@ -190,6 +214,9 @@ Not using Tailscale? Point **Headscale**, WireGuard, Caddy or a Cloudflare Tunne
 ~/.config/grokked/vault.key    encryption key for saved passwords (0600, generated on first use)
 ~/.local/share/grokked/        grokked.db, blobs, per-bot work dirs
 ```
+
+On macOS all of these live in `~/Library/Application Support/Grokked/` instead, along
+with `daemon.log`, the daemon's output.
 
 **Settings** in the app edits `config.json`: the `worker` model does the actual task and
 `classifier` names conversations, using any tool-capable OpenRouter model id; the defaults
