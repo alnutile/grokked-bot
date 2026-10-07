@@ -110,11 +110,15 @@ export default function App() {
   const botById = new Map(bots.map((b) => [b.id, b]))
   useEffect(() => {
     if (boot) return
-    const load = () => api.credits().then((c) => setCredit(c.remaining)).catch(() => {})
+    // /v1/credits answers {error} rather than failing when there's no usable key
+    // yet (during first-run setup), so only take a real number.
+    const load = () => api.credits()
+      .then((c) => setCredit(typeof c.remaining === 'number' ? c.remaining : null))
+      .catch(() => {})
     void load()
     const t = setInterval(load, 60_000)
     return () => clearInterval(t)
-  }, [boot])
+  }, [boot, system?.openrouter_key])
 
   if (boot) {
     const retry = () => { setBoot('Starting up…'); setBootFailed(false); setLogs(null); setBootAttempt((n) => n + 1) }
