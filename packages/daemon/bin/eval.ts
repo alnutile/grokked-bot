@@ -15,7 +15,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { DATA_DIR, DOCKER_HOST_SOCK, PORT, TOKEN_PATH } from '../src/config.ts'
+import { DATA_DIR, PORT, TOKEN_PATH } from '../src/config.ts'
+import { docker as dockerCli } from '../src/runtime/docker.ts'
 import { SECRETS, TASKS, type Check, type EvalTask } from '../evals/tasks.ts'
 
 const exec = promisify(execFile)
@@ -39,7 +40,7 @@ async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T
 }
 const post = (path: string, body: unknown) => api(path, { method: 'POST', body: JSON.stringify(body) })
-const docker = (...args: string[]) => exec('docker', args, { env: { ...process.env, DOCKER_HOST: DOCKER_HOST_SOCK } })
+const docker = (...args: string[]) => dockerCli(args)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /** The smallest valid PDF, so the upload task has a real file to attach. */

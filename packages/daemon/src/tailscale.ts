@@ -21,10 +21,13 @@ const FUNNEL_PORT = 8443
 const target = (path: string) => `http://127.0.0.1:${HOOKS_PORT}${path}`
 
 function binary(): string | null {
-  for (const dir of [...(process.env.PATH ?? '').split(':'), '/snap/bin', '/usr/bin', '/usr/local/bin']) {
+  for (const dir of [...(process.env.PATH ?? '').split(':'), '/snap/bin', '/usr/bin', '/usr/local/bin', '/opt/homebrew/bin']) {
     if (dir && existsSync(`${dir}/tailscale`)) return `${dir}/tailscale`
   }
-  return null
+  // The Mac App Store / standalone app ships its CLI inside the bundle and
+  // only links it onto PATH if you ask it to.
+  const macApp = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
+  return existsSync(macApp) ? macApp : null
 }
 
 async function ts(args: string[]): Promise<string> {

@@ -1,14 +1,20 @@
 # Builds what a Mac user needs: the .dmg, and the bot computer image it pulls on
-# first run. Run it by hand from the Actions tab, or push a v* tag to also cut a
-# GitHub release with the .dmg files attached.
+# first run. Run it by hand from the Actions tab for a test build, or cut a
+# release:
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# That stamps 0.2.0 into the app, builds and smoke-tests both Macs, and opens a
+# *draft* GitHub release with the notes from .github/release-notes.md. Publish
+# it from the Releases page. The .dmg names never change, so
+#   https://github.com/<owner>/<repo>/releases/latest/download/Grokked-Bot-mac-apple-silicon.dmg
+# always serves the newest one.
 name: release
 
 on:
   workflow_dispatch:
   push:
     tags: ['v*']
-    # Builds the branch so the Mac app can be tried before it's merged.
-    branches: [mac-dmg]
 
 permissions:
   contents: write
@@ -45,7 +51,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+        include:
+          - target: aarch64-apple-darwin
+            label: apple-silicon
+          - target: x86_64-apple-darwin
+            label: intel
     # Both build on an Apple Silicon runner; Intel is a cross-compile.
     runs-on: macos-15
     steps:
@@ -65,6 +75,13 @@ jobs:
           workspaces: apps/desktop/src-tauri
 
       - run: pnpm install --frozen-lockfile
+      # The tag is the version: v0.2.0 -> 0.2.0 in the app's About and Info.plist.
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: apps/desktop/src-tauri
+        run: |
+          jq --arg v "${GITHUB_REF_NAME#v}" '.version = $v' tauri.conf.json > t.json && mv t.json tauri.conf.json
+          jq -r .version tauri.conf.json
       - run: node scripts/build.mjs
       - run: scripts/fetch-node.sh ${{ matrix.target }}
       - run: pnpm tauri build --target ${{ matrix.target }} --bundles app,dmg
@@ -90,12 +107,36 @@ jobs:
           done
           echo "daemon never became healthy:"; cat daemon.log; ls -R "$APP/Contents" | head -40; exit 1
 
+      # Fixed names, so releases/latest/download/<name> links never go stale.
+      - name: Name the dmg
+        run: |
+          mkdir -p out
+          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg \
+             "out/Grokked-Bot-mac-${{ matrix.label }}.dmg"
+          ls -la out
+
       - uses: actions/upload-artifact@v4
         with:
-          name: grokked-bot-${{ matrix.target }}
-          path: apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          name: grokked-bot-mac-${{ matrix.label }}
+          path: out/*.dmg
 
-      - if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [mac-app, computer-image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          files: apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          pattern: grokked-bot-mac-*
+          merge-multiple: true
+          path: out
+      - run: ls -la out
+      # A draft, so the notes get a human read before they're public.
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: Grokked Bot ${{ github.ref_name }}
+          body_path: .github/release-notes.md
+          generate_release_notes: true
+          files: out/*.dmg
