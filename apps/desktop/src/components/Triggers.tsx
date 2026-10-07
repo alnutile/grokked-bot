@@ -114,7 +114,9 @@ function TriggerCard({ t, remote, token, onEdit, onChanged, onOpenThread, onToke
           <code>{url}</code>
           <button className="btn btn-ghost btn-sm" onClick={() => copy(url).then(() => setNote('URL copied'))}>Copy URL</button>
           <button className="btn btn-ghost btn-sm" onClick={() => copy(curl!).then(() => setNote('curl copied'))}>Copy curl</button>
-          {!remote?.serving && <span className="field-hint">Local only for now — turn on Tailscale in Settings → Remote access to reach it from other devices.</span>}
+          {!remote?.serving && (!t.public && remote?.funnel
+            ? <span className="field-hint">Local only for now. Public webhooks (Funnel) are on, but this hook is tailnet-only, so the Funnel URL won't answer for it. Mark it Public to call it from anywhere, or turn on Webhooks on my tailnet in Settings → Remote access for your own devices.</span>
+            : <span className="field-hint">Local only for now. Turn on Webhooks on my tailnet in Settings → Remote access to reach it from your other devices.</span>)}
           {t.public && remote?.serving && !remote.funnel && <span className="field-hint">Marked public, but Funnel is off in Settings → Remote access, so it's tailnet-only for now.</span>}
         </div>
       )}

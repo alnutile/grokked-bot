@@ -49,7 +49,7 @@ export function createHooksApp(db: Db, bus: EventBus): Hono {
     const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
     if (!triggers.tokenMatches(db, id, token)) return { res: c.json({ error: 'unauthorized', message: 'missing or wrong bearer token' }, 401) }
     // Checked after the token so a public probe can't learn which hooks exist.
-    if (isPublic && !t.public) return { res: c.json({ error: 'not_public', message: 'this hook is only reachable on the tailnet' }, 403) }
+    if (isPublic && !t.public) return { res: c.json({ error: 'not_public', message: "this hook is tailnet-only, so it doesn't answer on the public (Funnel) URL. Mark it Public in the bot's Triggers tab, or call it on your tailnet URL instead." }, 403) }
     return { t }
   }
 
