@@ -17,6 +17,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CDP_PORT=9222 \
     SHIM_PORT=8088
 
+# Mirrors and dl.google.com drop connections often enough on CI runners to fail
+# a release; retry rather than restart a 30-minute build.
+RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
       xvfb x11vnc novnc websockify openbox xdotool xclip \
       tint2 xterm pcmanfm \
@@ -28,7 +32,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Real Google Chrome, not the bundled unbranded Chromium: SSO risk engines treat
 # unbranded builds as suspicious far more often, and the entire premise is
 # signing into real accounts.
-RUN npx -y playwright@1.62.1 install --with-deps chrome \
+RUN for i in 1 2 3 4; do \
+      npx -y playwright@1.62.1 install --with-deps chrome && break; \
+      [ "$i" = 4 ] && exit 1; echo "chrome install failed, retrying ($i)"; sleep 20; \
+    done \
     && rm -rf /root/.npm /tmp/*
 
 WORKDIR /opt/shim
