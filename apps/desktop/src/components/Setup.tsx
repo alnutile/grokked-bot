@@ -48,7 +48,7 @@ export function Setup({ status, onChange }: { status: SystemStatus; onChange: (s
               : 'Install Docker, then come back here.'}</p>
             <button className="btn" onClick={() => open(mac
               ? 'https://www.docker.com/products/docker-desktop/'
-              : 'https://docs.docker.com/engine/security/rootless/')}>Get Docker</button>
+              : 'https://docs.docker.com/engine/install/')}>Get Docker</button>
           </>}
           {status.docker === 'not_running' && <>
             <p>Docker is installed but not running. {mac ? 'Open Docker Desktop and wait for it to say it’s running.' : 'Start the Docker service.'}</p>

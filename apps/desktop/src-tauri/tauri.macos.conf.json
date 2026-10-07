@@ -13,7 +13,7 @@
       "icons/icon.png"
     ],
     "externalBin": [
-      "binaries/node"
+      "binaries/grokked-node"
     ],
     "resources": {
       "resources/daemon/": "daemon/"

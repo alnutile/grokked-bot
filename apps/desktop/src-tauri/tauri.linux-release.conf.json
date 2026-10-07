@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": [
+      "deb",
+      "appimage"
+    ],
+    "externalBin": [
+      "binaries/grokked-node"
+    ],
+    "resources": {
+      "resources/daemon/": "daemon/"
+    }
+  }
+}

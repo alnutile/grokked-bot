@@ -1,12 +1,12 @@
-# Builds what a Mac user needs: the .dmg, and the bot computer image it pulls on
-# first run. Run it by hand from the Actions tab for a test build, or cut a
+# Builds the Mac .dmgs, the Linux .deb and AppImage, and the bot computer image
+# they pull on first run. Run it by hand from the Actions tab for a test build, or cut a
 # release:
 #
 #   git tag v0.2.0 && git push origin v0.2.0
 #
-# That stamps 0.2.0 into the app, builds and smoke-tests both Macs, and opens a
+# That stamps 0.2.0 into the app, builds and smoke-tests both Macs and Linux, and opens a
 # *draft* GitHub release with the notes from .github/release-notes.md. Publish
-# it from the Releases page. The .dmg names never change, so
+# it from the Releases page. File names never change, so
 #   https://github.com/<owner>/<repo>/releases/latest/download/Grokked-Bot-mac-apple-silicon.dmg
 # always serves the newest one.
 name: release
@@ -96,9 +96,9 @@ jobs:
         if: matrix.target == 'aarch64-apple-darwin'
         run: |
           APP="apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Grokked Bot.app"
-          codesign -dv --verbose=2 "$APP/Contents/MacOS/node" 2>&1 | grep -iE "flags|signature" || true
+          codesign -dv --verbose=2 "$APP/Contents/MacOS/grokked-node" 2>&1 | grep -iE "flags|signature" || true
           export HOME="$(mktemp -d)" GROKKED_PORT=8790
-          "$APP/Contents/MacOS/node" "$APP/Contents/Resources/daemon/grokked.mjs" > daemon.log 2>&1 &
+          "$APP/Contents/MacOS/grokked-node" "$APP/Contents/Resources/daemon/grokked.mjs" > daemon.log 2>&1 &
           TOKEN_FILE="$HOME/Library/Application Support/Grokked/token"
           for i in $(seq 1 30); do
             if [ -f "$TOKEN_FILE" ] && curl -sf -H "authorization: Bearer $(cat "$TOKEN_FILE")" \
@@ -120,15 +120,79 @@ jobs:
           name: grokked-bot-mac-${{ matrix.label }}
           path: out/*.dmg
 
+  linux-app:
+    # 24.04's glibc: the AppImage runs on Ubuntu 24.04 / Debian 13 and newer.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tauri's system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf file
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - run: pnpm install --frozen-lockfile
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: apps/desktop/src-tauri
+        run: |
+          jq --arg v "${GITHUB_REF_NAME#v}" '.version = $v' tauri.conf.json > t.json && mv t.json tauri.conf.json
+          jq -r .version tauri.conf.json
+      - run: node scripts/build.mjs
+      - run: scripts/fetch-node.sh x86_64-unknown-linux-gnu
+      # The sidecar and daemon only go into release builds, so `tauri dev`
+      # doesn't need them.
+      - run: pnpm tauri build --config src-tauri/tauri.linux-release.conf.json
+        working-directory: apps/desktop
+
+      # Install the .deb for real and start its daemon the way the app does.
+      - name: Smoke test the installed daemon
+        run: |
+          sudo apt-get install -y ./apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+          export HOME="$(mktemp -d)"
+          D="$HOME/.config/grokked-app"; mkdir -p "$D"
+          GROKKED_PACKAGED=1 GROKKED_CONFIG_DIR="$D" GROKKED_DATA_DIR="$HOME/data" GROKKED_RUNTIME_DIR="$HOME/run" \
+            GROKKED_PORT=8797 GROKKED_HOOKS_PORT=8798 \
+            /usr/bin/grokked-node "/usr/lib/Grokked Bot/daemon/grokked.mjs" > daemon.log 2>&1 &
+          for i in $(seq 1 30); do
+            if [ -f "$D/token" ] && curl -sf -H "authorization: Bearer $(cat "$D/token")" \
+                 http://127.0.0.1:8797/v1/health; then echo; echo "daemon healthy"; kill %1; exit 0; fi
+            sleep 1
+          done
+          echo "daemon never became healthy:"; cat daemon.log; exit 1
+
+      - name: Name the packages
+        run: |
+          mkdir -p out
+          cp apps/desktop/src-tauri/target/release/bundle/deb/*.deb out/Grokked-Bot-linux-amd64.deb
+          cp apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage out/Grokked-Bot-linux-x86_64.AppImage
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grokked-bot-linux
+          path: out/*
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [mac-app, computer-image]
+    needs: [mac-app, linux-app, computer-image]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: grokked-bot-mac-*
+          pattern: grokked-bot-*
           merge-multiple: true
           path: out
       - run: ls -la out
@@ -139,4 +203,4 @@ jobs:
           name: Grokked Bot ${{ github.ref_name }}
           body_path: .github/release-notes.md
           generate_release_notes: true
-          files: out/*.dmg
+          files: out/*

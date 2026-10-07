@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Put a Node binary where Tauri expects the "node" sidecar:
-#   apps/desktop/src-tauri/binaries/node-<rust target triple>
+#   apps/desktop/src-tauri/binaries/grokked-node-<rust target triple>
+# (not plain "node": a .deb installs sidecars into /usr/bin, beside the system node)
 # The macOS app runs the daemon on this, so users don't need Node installed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -16,7 +17,7 @@ case "$TRIPLE" in
   *) echo "no Node build for $TRIPLE" >&2; exit 1 ;;
 esac
 
-OUT="apps/desktop/src-tauri/binaries/node-$TRIPLE"
+OUT="apps/desktop/src-tauri/binaries/grokked-node-$TRIPLE"
 if [[ -x "$OUT" ]] && [[ "$("$OUT" -v 2>/dev/null || true)" == "v$NODE_VERSION" ]]; then
   echo "have $OUT"; exit 0
 fi

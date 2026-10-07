@@ -18,11 +18,15 @@ export const INSTANCE_ID = `inst_${randomUUID().replaceAll('-', '').slice(0, 16)
 // these in sync with apps/desktop/src-tauri/src/lib.rs.
 const MAC_DIR = join(homedir(), 'Library', 'Application Support', 'Grokked')
 
-export const CONFIG_DIR = IS_MAC ? MAC_DIR : join(xdg('XDG_CONFIG_HOME', '.config'), 'grokked')
-export const DATA_DIR = IS_MAC ? MAC_DIR : join(xdg('XDG_DATA_HOME', '.local/share'), 'grokked')
-export const RUNTIME_DIR = IS_MAC
+// The packaged Linux app runs as its own instance beside a dev setup, so the
+// desktop app can point all three somewhere else (see Instance in lib.rs).
+export const CONFIG_DIR = process.env.GROKKED_CONFIG_DIR
+  ?? (IS_MAC ? MAC_DIR : join(xdg('XDG_CONFIG_HOME', '.config'), 'grokked'))
+export const DATA_DIR = process.env.GROKKED_DATA_DIR
+  ?? (IS_MAC ? MAC_DIR : join(xdg('XDG_DATA_HOME', '.local/share'), 'grokked'))
+export const RUNTIME_DIR = process.env.GROKKED_RUNTIME_DIR ?? (IS_MAC
   ? join(MAC_DIR, 'run')
-  : join(process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 1000}`, 'grokked')
+  : join(process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 1000}`, 'grokked'))
 
 export const DB_PATH = process.env.GROKKED_DB ?? join(DATA_DIR, 'grokked.db')
 export const BLOB_DIR = join(DATA_DIR, 'blobs')
@@ -53,10 +57,12 @@ export function setOpenRouterKey(key: string): void {
   writeFileSync(ENV_PATH, lines.join('\n') + '\n', { mode: 0o600 })
 }
 
-/** Rootless Docker on Linux. On macOS, leave it unset so the docker CLI uses its
- *  current context (Docker Desktop, OrbStack, Colima all set one). */
+/** Rootless Docker on Linux when it's there. Otherwise leave it unset so the
+ *  docker CLI uses its current context: Docker Desktop, OrbStack and Colima on
+ *  macOS, or plain /var/run/docker.sock on Linux. */
+const ROOTLESS_SOCK = `/run/user/${process.getuid?.() ?? 1000}/docker.sock`
 export const DOCKER_HOST_SOCK: string | undefined =
-  process.env.DOCKER_HOST ?? (IS_MAC ? undefined : `unix:///run/user/${process.getuid?.() ?? 1000}/docker.sock`)
+  process.env.DOCKER_HOST ?? (!IS_MAC && existsSync(ROOTLESS_SOCK) ? `unix://${ROOTLESS_SOCK}` : undefined)
 
 /** The bot's computer. Pulled from the registry on first run; on Linux you can
  *  still build it locally with container/build.sh and point this at the tag. */

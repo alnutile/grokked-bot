@@ -1,11 +1,16 @@
 import { invoke } from '@tauri-apps/api/core'
 
-// Overridable so the UI can be pointed at a second, throwaway daemon in dev.
-const BASE: string = (import.meta as any).env?.VITE_DAEMON_URL ?? 'http://127.0.0.1:8787'
+// VITE_DAEMON_URL points a dev UI at a second, throwaway daemon. Inside the app,
+// the app says where its daemon is: the packaged Linux app runs its own on 8797.
+const DEV_BASE: string | undefined = (import.meta as any).env?.VITE_DAEMON_URL
+let BASE: string = DEV_BASE ?? 'http://127.0.0.1:8787'
 let TOKEN = ''
+
+export const daemonBase = () => BASE
 
 export async function initToken(): Promise<void> {
   try {
+    if (!DEV_BASE && inTauri()) BASE = await invoke<string>('daemon_url')
     TOKEN = await invoke<string>('daemon_token')
   } catch (e) {
     // Inside the app this is a real failure (no token file yet, or the IPC call

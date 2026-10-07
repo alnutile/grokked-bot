@@ -53,12 +53,13 @@ export function docker(args: string[], opts: { timeout?: number } = {}) {
 export const IMAGE_PLATFORM = 'linux/amd64'
 
 /** Before the registry image existed the computer was built locally as
- *  grokked/computer:0.1. Keep using that if it's there and nothing says otherwise,
- *  so an existing Linux install doesn't suddenly try to pull 5GB. */
+ *  grokked/computer:0.1. A dev setup keeps using that if it's there, so an
+ *  existing Linux install doesn't suddenly try to pull 5GB. The packaged app
+ *  always uses the published image, so it behaves the same on every machine. */
 let resolvedImage: string | null = null
 export async function computerImage(): Promise<string> {
   if (resolvedImage) return resolvedImage
-  if (!process.env.GROKKED_IMAGE && await imagePresent('grokked/computer:0.1')) {
+  if (!process.env.GROKKED_IMAGE && !process.env.GROKKED_PACKAGED && await imagePresent('grokked/computer:0.1')) {
     resolvedImage = 'grokked/computer:0.1'
   } else {
     resolvedImage = COMPUTER_IMAGE

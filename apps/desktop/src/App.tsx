@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { api, connect, initToken, subscribe, type Bot, type Frame, type ThreadSummary, type SystemStatus } from './api.ts'
+import { api, connect, daemonBase, initToken, subscribe, type Bot, type Frame, type ThreadSummary, type SystemStatus } from './api.ts'
 import { Thread } from './components/Thread.tsx'
 import { BotPanel } from './components/BotPanel.tsx'
 import { Avatar } from './components/Avatar.tsx'
@@ -63,7 +63,7 @@ export default function App() {
         const st = await invoke<{ unit_active: boolean; error: string | null }>('daemon_status')
         setBoot(st.error
           ?? (st.unit_active
-            ? `The daemon is running but not answering on 127.0.0.1:8787 (${String(last)}).`
+            ? `The daemon is running but not answering on ${daemonBase().replace('http://', '')} (${String(last)}).`
             : 'The daemon is not running, so your bots are not working.'))
       } catch (e) {
         setBoot(`The app couldn't check on its daemon: ${String(e)}`)

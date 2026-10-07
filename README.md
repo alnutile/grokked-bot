@@ -41,7 +41,18 @@ computer image to `ghcr.io/alnutile/grokked-computer`, and opens a draft release
 `.github/release-notes.md` as its notes. Publish it from the Releases page. For a local
 build on a Mac: `scripts/build-mac.sh`.
 
-## Quick start (Linux)
+## On Linux, the app
+
+**[.deb for Ubuntu/Debian 24.04+](https://github.com/alnutile/grokked-bot/releases/latest/download/Grokked-Bot-linux-amd64.deb)** ·
+[AppImage](https://github.com/alnutile/grokked-bot/releases/latest/download/Grokked-Bot-linux-x86_64.AppImage)
+
+Like the Mac app, it ships its own Node, runs the daemon itself and walks you through
+Docker, the image and your key. It runs as **its own instance**, so it can sit beside a
+source checkout: port 8797 (webhooks 8798), data in `~/.config/grokked-app` and
+`~/.local/share/grokked-app`, and always the published bot computer image. Bots stop
+when you quit the app; for always-on bots, use the systemd setup below.
+
+## Quick start (Linux, from source)
 
 Tested on Ubuntu with Node 24. Nothing below needs root except installing system packages.
 
