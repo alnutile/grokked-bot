@@ -172,6 +172,8 @@ mod child {
             // Tells the daemon to use the published bot computer image even if
             // a locally built one is around (see runtime/docker.ts).
             .env("GROKKED_PACKAGED", "1")
+            // Picks the bot computer image built for this exact release.
+            .env("GROKKED_APP_VERSION", app.package_info().version.to_string())
             .env("GROKKED_CONFIG_DIR", &inst.config_dir)
             .env("GROKKED_DATA_DIR", &inst.data_dir)
             .env("GROKKED_PORT", inst.port.to_string())

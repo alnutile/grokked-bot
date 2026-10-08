@@ -10,7 +10,7 @@ const xdg = (envVar: string, fallback: string) =>
     ? process.env[envVar]!
     : join(homedir(), fallback)
 
-export const VERSION = '0.1.0'
+export const VERSION = '0.2.1'
 export const INSTANCE_ID = `inst_${randomUUID().replaceAll('-', '').slice(0, 16)}`
 
 // macOS has no XDG dirs and no /run/user. Everything lives under Application
@@ -66,7 +66,14 @@ export const DOCKER_HOST_SOCK: string | undefined =
 
 /** The bot's computer. Pulled from the registry on first run; on Linux you can
  *  still build it locally with container/build.sh and point this at the tag. */
-export const COMPUTER_IMAGE = process.env.GROKKED_IMAGE ?? 'ghcr.io/alnutile/grokked-computer:0.1'
+/** The packaged app passes its version so it runs the bot computer image built
+ *  for that release (ghcr …:<version>). An upgrade then finds that tag missing,
+ *  the setup screen pulls it, and bot computers are recreated on it (logins are
+ *  in volumes, so they survive). A fixed tag never reached existing installs:
+ *  they kept their cached copy forever. */
+const APP_VERSION = process.env.GROKKED_APP_VERSION
+export const COMPUTER_IMAGE = process.env.GROKKED_IMAGE ??
+  `ghcr.io/alnutile/grokked-computer:${APP_VERSION && /^\d+\.\d+\.\d+$/.test(APP_VERSION) ? APP_VERSION : '0.1'}`
 /** Prefix for bot computer container (and profile volume) names. Containers are
  *  named after the bot, so a second instance on the same machine -- the test
  *  instance next to the installed app -- needs its own prefix or it would drive

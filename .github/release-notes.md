@@ -1,3 +1,13 @@
+## What's new in 0.2.1
+
+- **Sites with a browser "Sign in" popup** (HTTP basic auth, e.g. Swagger docs) now work:
+  save the login in Settings → Passwords and the bot signs in without ever seeing the
+  password.
+- **Media tab**: text and JSON files preview again in the installed app (they said
+  "Load failed"), and new **Open**, **Show in folder** and **Open folder** buttons.
+- **Bot computers update with the app.** On first launch after upgrading, the app
+  downloads the matching bot computer image; your bots' site logins carry over.
+
 ## Download for Mac
 
 | Your Mac | Download |
