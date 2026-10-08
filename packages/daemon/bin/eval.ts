@@ -63,7 +63,9 @@ async function setup(): Promise<string[]> {
   await docker('exec', BOT, 'mkdir', '-p', '/tmp/site')
   await docker('cp', `${FIXTURES}/.`, `${BOT}:/tmp/site/`)
   await docker('exec', BOT, 'pkill', '-f', '[h]ttp.server 8000').catch(() => {})  // none running is fine
+  await docker('exec', BOT, 'pkill', '-f', '[b]asicauth.py').catch(() => {})
   await docker('exec', '-d', '-w', '/tmp/site', BOT, 'python3', '-m', 'http.server', '8000')
+  await docker('exec', '-d', '-w', '/tmp/site', BOT, 'python3', 'basicauth.py')
   await sleep(500)
   console.log('ready')
 
@@ -74,7 +76,8 @@ async function setup(): Promise<string[]> {
   const login = await mk({ label: 'Eval test site', url: 'http://localhost:8000/login.html', username: 'alfred', password: SECRETS.login })
   const google = await mk({ label: 'Eval Google account', url: 'http://127.0.0.1:8000/google.html', username: 'eval@gmail.com', password: SECRETS.google })
   const sso = await mk({ label: 'Eval Acme Jobs', url: 'http://localhost:8000/sso.html', sign_in_with: 'google', via_credential_id: google })
-  return [login, google, sso]
+  const basic = await mk({ label: 'Eval API docs', url: 'http://localhost:8001/', username: 'apiuser', password: SECRETS.basic })
+  return [login, google, sso, basic]
 }
 
 interface Result {

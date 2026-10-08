@@ -34,7 +34,9 @@ export class Session {
         // Follow new windows the moment they open: "Sign in with Google" and
         // target=_blank links both land in one, and acting on the old page
         // meanwhile is acting on the wrong thing. Closing it falls back (page()).
+        for (const p of this.#context.pages()) this.#watchAuth(p)
         this.#context.on('page', (p) => {
+          this.#watchAuth(p)
           this.#page = p
           this.windowNote = 'A new window opened and you are now in it. Snapshot before acting; when it closes you return to the previous one.'
           void p.bringToFront().catch(() => {})
@@ -59,6 +61,31 @@ export class Session {
       }
     }
     throw new Fail('cdp_unavailable', `could not attach to Chrome at ${CDP}: ${lastErr?.message}`)
+  }
+
+  /** Notice HTTP basic-auth challenges. Chrome answers them with its own
+   *  sign-in popup, outside the page: the bot can't see it in a snapshot or
+   *  click it, so it has to be told (see envelope) and answer with http_auth. */
+  #watchAuth(p) {
+    p.on('response', (r) => {
+      if (r.status() !== 401 || !r.request().isNavigationRequest()) return
+      const header = r.headers()['www-authenticate'] ?? ''
+      if (!/^\s*(basic|digest)\b/i.test(header)) return
+      this.authChallenge = { url: r.url(), realm: /realm="([^"]*)"/i.exec(header)?.[1] ?? '' }
+    })
+  }
+
+  #authNote() {
+    const c = this.authChallenge
+    if (!c) return null
+    const host = new URL(c.url).host
+    return {
+      url: c.url,
+      host,
+      realm: c.realm,
+      message: `${host} asks for an HTTP sign-in (a browser popup outside the page that you cannot see or click). ` +
+        `Call credentials_list, then browser_http_auth with the saved login for ${new URL(c.url).hostname}. If none is saved, ask_human.`,
+    }
   }
 
   page() {
@@ -142,7 +169,11 @@ export class Session {
     const page = this.page()
     const note = this.windowNote
     this.windowNote = undefined
-    return { ok: true, url: page.url(), title: await page.title().catch(() => ''), ...(note ? { window: note } : {}), ...extra }
+    const auth = this.#authNote()
+    return {
+      ok: true, url: page.url(), title: await page.title().catch(() => ''),
+      ...(note ? { window: note } : {}), ...(auth ? { http_auth_required: auth } : {}), ...extra,
+    }
   }
 
   // ---------------------------------------------------------------- actions
@@ -156,9 +187,46 @@ export class Session {
   async navigate({ url }) {
     this.assertAllowed(url)
     const page = this.page()
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 })
+    this.authChallenge = null
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 })
+    } catch (e) {
+      // Under Playwright, a basic-auth challenge with no credentials fails the
+      // navigation outright; say what it was rather than a bare net:: error.
+      const auth = this.#authNote()
+      if (auth || /ERR_INVALID_AUTH_CREDENTIALS/.test(String(e?.message))) {
+        throw new Fail('http_auth_required', auth?.message ??
+          `${new URL(url).host} asks for an HTTP sign-in. Call credentials_list, then browser_http_auth; if none is saved, ask_human.`,
+          'browser_http_auth')
+      }
+      throw e
+    }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
     return this.envelope({ snapshot: (await this.snapshot()).text })
+  }
+
+  /** Answer an HTTP basic-auth challenge with a saved login the daemon hands
+   *  over. Playwright can't scope credentials to one site, so they're set only
+   *  for this one load and cleared at once; Chrome caches an accepted login for
+   *  the site, so its later requests keep working. The daemon has already
+   *  checked that the site matches the login's domain. */
+  async http_auth({ username, password, url }) {
+    const page = this.page()
+    const target = url || this.authChallenge?.url || page.url()
+    this.assertAllowed(target)
+    let res
+    try {
+      await this.#context.setHTTPCredentials({ username: String(username), password: String(password) })
+      res = await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null)
+    } finally {
+      await this.#context.setHTTPCredentials(null).catch(() => {})
+    }
+    if (!res || res.status() === 401) {
+      throw new Fail('auth_rejected', `the site rejected the saved login for ${new URL(target).host}`, 'ask_human')
+    }
+    this.authChallenge = null
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
+    return this.envelope({ status: res.status(), snapshot: (await this.snapshot()).text })
   }
 
   async click({ ref, button = 'left', click_count = 1, modifiers = [] }) {

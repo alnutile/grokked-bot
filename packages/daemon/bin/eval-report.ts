@@ -14,18 +14,19 @@ interface Run { model: string; commit: string; at: string; passed: number; total
 const dir = join(DATA_DIR, 'evals')
 if (!existsSync(dir)) { console.log('No eval runs yet: pnpm eval'); process.exit(0) }
 
-// Latest run per model that covered the whole suite (subset runs are for debugging).
+// Latest full-suite run per model (subset runs are for debugging). A run from
+// before a task was added still counts; its missing tasks show as —.
 const latest = new Map<string, Run>()
 for (const f of readdirSync(dir).filter((f) => f.endsWith('.json')).sort()) {
   const run = JSON.parse(readFileSync(join(dir, f), 'utf8')) as Run
-  if (run.total === TASKS.length) latest.set(run.model, run)
+  if (run.total >= Math.min(10, TASKS.length)) latest.set(run.model, run)
 }
 if (!latest.size) { console.log('No full-suite runs yet: pnpm eval'); process.exit(0) }
 
 const runs = [...latest.values()].sort((a, b) => b.passed - a.passed || a.usd - b.usd)
 const money = (n: number) => `$${n.toFixed(2)}`
 
-console.log(`\nLatest full run per model (${TASKS.length} tasks), best value first\n`)
+console.log(`\nLatest full run per model (the suite has ${TASKS.length} tasks now), best value first\n`)
 console.log('model'.padEnd(30), 'pass'.padStart(6), 'total $'.padStart(9), '$ / pass'.padStart(9), 'steps'.padStart(6), 'time'.padStart(7), '  commit   date')
 for (const r of runs) {
   const steps = r.results.reduce((a, x) => a + x.steps, 0)

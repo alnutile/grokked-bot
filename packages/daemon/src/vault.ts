@@ -158,7 +158,8 @@ export const vault = {
           ...base, username: c.username || undefined, has_password: c.has_secret,
           how_to_sign_in: `On ${c.domain}'s sign-in page, browser_fill_credential(${c.id}, username) into the email/username ` +
             `field and (${c.id}, password) into the password field, then click its sign-in button. If the password ` +
-            'field only appears after you submit the username, snapshot again before filling it.',
+            'field only appears after you submit the username, snapshot again before filling it. If instead the site ' +
+            `asks for an HTTP sign-in (you get http_auth_required: a browser popup you can't see), call browser_http_auth(${c.id}).`,
         }
       }
       const provider = PROVIDERS[c.sign_in_with] ?? c.sign_in_with

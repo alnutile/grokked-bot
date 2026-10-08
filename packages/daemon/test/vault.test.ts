@@ -73,4 +73,23 @@ out = await fill({ credential_id: google.id, field: 'password', ref: 's1e2', ele
 assert.equal(out.ok, true); assert.equal(typed.at(-1), 'g-secret')
 console.log("  ok  the Google password is typed only on Google's pages")
 
+// ---- HTTP sign-in (Chrome's own popup): same rules, the challenge's host decides
+const basic = vault.create(db, { url: 'https://swagger.example.com', username: 'api', password: 'b-secret', bot_ids: ['bot-a'] })
+const httpAuth = TOOLS_BY_NAME.get('browser_http_auth')!.run!
+const calls: any[] = []
+let challenge = 'https://evil.example.net/'
+const rt2: any = {
+  act: async (action: string, a: any) => {
+    if (action === 'page_info') return { ok: true, url: 'about:blank', http_auth_required: { url: challenge } }
+    calls.push([action, a]); return { ok: true, status: 200, echoed: a.password }
+  },
+}
+out = await httpAuth({ credential_id: basic.id }, { runtime: rt2, runId: 'r', botId: 'bot-a', db })
+assert.equal(out.error, 'wrong_site'); assert.equal(calls.length, 0)
+challenge = 'https://swagger.example.com/index.html'
+out = await httpAuth({ credential_id: basic.id }, { runtime: rt2, runId: 'r', botId: 'bot-a', db })
+assert.equal(calls[0][0], 'http_auth'); assert.equal(calls[0][1].url, challenge)
+assert.ok(!JSON.stringify(out).includes('b-secret'), 'even an echoed secret is scrubbed')
+console.log('  ok  an HTTP sign-in goes only to the site that asked, and nothing echoes the secret')
+
 console.log('\nall passed')

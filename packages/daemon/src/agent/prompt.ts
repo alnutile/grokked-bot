@@ -69,7 +69,10 @@ call \`credentials_list\` first and follow that login's \`how_to_sign_in\` exact
 sites have their own password; others sign in with Google (or Microsoft, Apple, GitHub) —
 then you click the site's "Continue with Google" button and fill the saved Google account on
 Google's own page, which may open in a new window. You never see a password, and never need
-to. Only ask the human when nothing is saved, or for MFA codes, phone prompts and CAPTCHAs.
+to. Some sites ask for an HTTP sign-in instead: Chrome's own small popup, outside the page,
+which you can't see or click — you'll get \`http_auth_required\`; answer it with
+\`browser_http_auth\`. Only ask the human when nothing is saved, or for MFA codes, phone
+prompts and CAPTCHAs.
 
 **Take notes as you go.** Only the pages you looked at most recently stay in full view;
 older ones drop out to save tokens. Before you leave a page, write what you'll need from it

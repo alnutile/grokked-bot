@@ -261,6 +261,42 @@ export const TOOLS: Tool[] = [
     },
   },
 
+  {
+    name: 'browser_http_auth',
+    description:
+      'Sign in to a site that asks for an HTTP login: Chrome shows its own small "Sign in" popup outside the ' +
+      'page, which you cannot see in a snapshot or click (you get http_auth_required instead). Pass a saved ' +
+      "login for that site; it is answered for you, without you seeing the password, and the page loads.",
+    schema: S({ credential_id: z.string().describe('An id from credentials_list for this site.') }),
+    risk: 'medium', approval: 'never', replaySafe: false,
+    run: async (args, ctx) => {
+      if (vault.ssoSiteFor(ctx.db, args.credential_id)) {
+        return { ok: false, error: 'wrong_kind', message: 'That login signs in with a provider, not an HTTP login.' }
+      }
+      const c = vault.secretFor(ctx.db, args.credential_id, ctx.botId)
+      if (!c) return { ok: false, error: 'no_such_credential', message: 'No saved login with that id is available to you.' }
+      if (!c.row.username || !c.secret) {
+        return { ok: false, error: 'not_saved', message: `${c.row.label} has no username and password saved. Ask the human.`, recovery: 'ask_human' }
+      }
+      // The site asking may not be the page you are on yet (the challenge
+      // blocks the navigation), so check the host that asked.
+      const page = await ctx.runtime.act('page_info', {}) as { url?: string; http_auth_required?: { url: string } }
+      const url = page.http_auth_required?.url ?? page.url ?? ''
+      let host = ''
+      try { host = new URL(url).hostname } catch { /* about:blank */ }
+      if (!host || !hostMatches(host, c.row.domain)) {
+        return {
+          ok: false, error: 'wrong_site',
+          message: `The site asking is ${host || 'nothing'}, but ${c.row.label} is for ${c.row.domain}. ` +
+                   'Saved logins are only ever given to their own site.',
+        }
+      }
+      const out = await ctx.runtime.act('http_auth', { username: c.row.username, password: c.secret, url }) as Record<string, unknown>
+      // Nothing that comes back may carry the secret.
+      return JSON.parse(JSON.stringify(out).replaceAll(c.secret, '•••'))
+    },
+  },
+
   // ---------------------------------------------------------------- control
   {
     name: 'finish',

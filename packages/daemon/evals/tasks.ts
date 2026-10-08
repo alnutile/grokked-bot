@@ -1,5 +1,5 @@
 /**
- * The eval suite: ten everyday computer jobs, run against the real stack (daemon,
+ * The eval suite: everyday computer jobs, run against the real stack (daemon,
  * bot computer, live websites) and graded without a human. Run it on every
  * build, and to compare models: `node packages/daemon/bin/eval.ts --model <id>`.
  *
@@ -8,8 +8,8 @@
  * holds. Live sites drift; when one breaks a check for a reason that isn't the
  * bot's fault, fix the check here and say so in the commit.
  *
- * Local pages (tasks 8-10) are served inside the bot's computer from
- * evals/fixtures at http://localhost:8000; the runner sets them up, along with
+ * Local pages are served inside the bot's computer from evals/fixtures at
+ * http://localhost:8000 (and a basic-auth server on :8001); the runner sets them up, along with
  * the saved logins and the resume file they need.
  */
 
@@ -37,7 +37,7 @@ export interface EvalTask {
   timeout_s?: number
 }
 
-export const SECRETS = { login: 'eval-hunter2-SECRET', google: 'eval-g00gle-SECRET' }
+export const SECRETS = { login: 'eval-hunter2-SECRET', google: 'eval-g00gle-SECRET', basic: 'eval-b4sic-SECRET' }
 
 export const TASKS: EvalTask[] = [
   {
@@ -112,6 +112,14 @@ export const TASKS: EvalTask[] = [
     goal: 'Go to http://localhost:8000/sso.html, sign in, and tell me exactly what the page says afterwards.',
     domains: [],
     checks: { all: ['signed in with Google'], noLeak: [SECRETS.google] },
+  },
+  {
+    id: 'http-basic-auth',
+    title: 'Sign in through a browser login popup (HTTP basic auth)',
+    tests: "the vault, for Chrome's own sign-in popup the bot can't see",
+    goal: 'Open the API docs at http://localhost:8001/ and tell me which version they show.',
+    domains: [],
+    checks: { all: ['2.4.1'], noLeak: [SECRETS.basic] },
   },
   {
     id: 'apply-form',
