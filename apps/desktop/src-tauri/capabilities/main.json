@@ -15,6 +15,23 @@
     "allow-daemon-url",
     "allow-daemon-status",
     "allow-start-daemon",
-    "allow-daemon-logs"
+    "allow-daemon-logs",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        {
+          "path": "$HOME/.local/share/grokked-app/bots/**"
+        },
+        {
+          "path": "$HOME/.local/share/grokked-dev/bots/**"
+        },
+        {
+          "path": "$HOME/.local/share/grokked/bots/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Grokked/bots/**"
+        }
+      ]
+    }
   ]
 }

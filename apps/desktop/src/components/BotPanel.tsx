@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener'
 import { api, type Bot, type BotFile } from '../api.ts'
 import { Avatar, look } from './Avatar.tsx'
 import { ComputerPanel } from './ComputerPanel.tsx'
@@ -127,18 +128,19 @@ const size = (n: number) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).to
 
 function Media({ bot }: { bot: Bot }) {
   const [files, setFiles] = useState<BotFile[] | null>(null)
+  const [root, setRoot] = useState<string | null>(null)
   const [open, setOpen] = useState<{ f: BotFile; url: string; text?: string } | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
-  const load = () => api.files(bot.id).then((r) => setFiles(r.files)).catch((e) => setErr(String(e.message)))
+  const load = () => api.files(bot.id).then((r) => { setFiles(r.files); setRoot(r.root) }).catch((e) => setErr(String(e.message)))
+  // Hand the file to the desktop: your default app, or the file manager.
+  const desktop = (fn: () => Promise<unknown>) => fn().catch((e) => setErr(`Couldn't open it: ${String((e as Error)?.message ?? e)}`))
   useEffect(() => { void load() }, [bot.id])
 
   const show = async (f: BotFile) => {
     try {
-      const url = await api.fileUrl(bot.id, f.path)
-      const text = IMAGE.test(f.path) ? undefined
-        : f.size < 200_000 ? await (await fetch(url)).text() : undefined
-      setOpen({ f, url, text })
+      if (IMAGE.test(f.path)) setOpen({ f, url: await api.fileUrl(bot.id, f.path) })
+      else setOpen({ f, url: '', text: f.size < 200_000 ? await api.fileText(bot.id, f.path) : undefined })
     } catch (e) { setErr(String((e as Error).message)) }
   }
 
@@ -146,8 +148,10 @@ function Media({ bot }: { bot: Bot }) {
     return (
       <div className="media-view">
         <div className="media-view-head">
-          <button className="btn btn-ghost btn-sm" onClick={() => { URL.revokeObjectURL(open.url); setOpen(null) }}>← Back</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { if (open.url) URL.revokeObjectURL(open.url); setOpen(null) }}>← Back</button>
           <span className="media-name">{open.f.path}</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => desktop(() => openPath(open.f.abs))}>Open</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => desktop(() => revealItemInDir(open.f.abs))}>Show in folder</button>
         </div>
         {IMAGE.test(open.f.path)
           ? <img src={open.url} alt={open.f.path} className="media-img" />
@@ -162,7 +166,11 @@ function Media({ bot }: { bot: Bot }) {
     <div className="media">
       <div className="media-head">
         <span className="dim">What {bot.name} made or downloaded</span>
-        <button className="btn btn-ghost btn-sm" onClick={load}>Refresh</button>
+        <span className="row-gap">
+          {root && <button className="btn btn-ghost btn-sm" onClick={() => desktop(() => openPath(root))}
+            title={root}>Open folder</button>}
+          <button className="btn btn-ghost btn-sm" onClick={load}>Refresh</button>
+        </span>
       </div>
       {err && <p className="hint err">{err}</p>}
       {files?.length === 0 && <p className="dim media-empty">Nothing yet. Files it saves or downloads show up here.</p>}

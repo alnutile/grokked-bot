@@ -162,6 +162,16 @@ export const api = {
   renameThread: (id: string, title: string) =>
     req(`/v1/threads/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   files: (botId: string) => req<{ root: string; files: BotFile[] }>(`/v1/bots/${botId}/files`),
+  /** A text file's contents, read straight from the daemon. (Not via a blob:
+   *  URL: the release CSP's connect-src has no blob:, so fetching one fails
+   *  with WebKit's "Load failed" -- only in the packaged app.) */
+  fileText: async (botId: string, path: string) => {
+    const res = await fetch(`${BASE}/v1/bots/${botId}/files/raw?path=${encodeURIComponent(path)}`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    return res.text()
+  },
   /** A blob: URL for a file in the bot's work dir (img tags can't send the bearer token). */
   fileUrl: async (botId: string, path: string) => {
     const res = await fetch(`${BASE}/v1/bots/${botId}/files/raw?path=${encodeURIComponent(path)}`, {
