@@ -15,12 +15,13 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { DATA_DIR, PORT, TOKEN_PATH } from '../src/config.ts'
+import { CONTAINER_PREFIX, DATA_DIR, PORT, TOKEN_PATH } from '../src/config.ts'
 import { docker as dockerCli } from '../src/runtime/docker.ts'
 import { SECRETS, TASKS, type Check, type EvalTask } from '../evals/tasks.ts'
 
 const exec = promisify(execFile)
 const BOT = 'eval-bot'
+const CONTAINER = CONTAINER_PREFIX + BOT
 const BASE = `http://127.0.0.1:${PORT}`
 const TOKEN = readFileSync(TOKEN_PATH, 'utf8').trim()
 const WORK = join(DATA_DIR, 'bots', BOT, 'work')
@@ -60,12 +61,12 @@ async function setup(): Promise<string[]> {
 
   process.stdout.write('starting the eval bot\'s computer… ')
   await post(`/v1/bots/${BOT}/computer/start`, {})
-  await docker('exec', BOT, 'mkdir', '-p', '/tmp/site')
-  await docker('cp', `${FIXTURES}/.`, `${BOT}:/tmp/site/`)
-  await docker('exec', BOT, 'pkill', '-f', '[h]ttp.server 8000').catch(() => {})  // none running is fine
-  await docker('exec', BOT, 'pkill', '-f', '[b]asicauth.py').catch(() => {})
-  await docker('exec', '-d', '-w', '/tmp/site', BOT, 'python3', '-m', 'http.server', '8000')
-  await docker('exec', '-d', '-w', '/tmp/site', BOT, 'python3', 'basicauth.py')
+  await docker('exec', CONTAINER, 'mkdir', '-p', '/tmp/site')
+  await docker('cp', `${FIXTURES}/.`, `${CONTAINER}:/tmp/site/`)
+  await docker('exec', CONTAINER, 'pkill', '-f', '[h]ttp.server 8000').catch(() => {})  // none running is fine
+  await docker('exec', CONTAINER, 'pkill', '-f', '[b]asicauth.py').catch(() => {})
+  await docker('exec', '-d', '-w', '/tmp/site', CONTAINER, 'python3', '-m', 'http.server', '8000')
+  await docker('exec', '-d', '-w', '/tmp/site', CONTAINER, 'python3', 'basicauth.py')
   await sleep(500)
   console.log('ready')
 

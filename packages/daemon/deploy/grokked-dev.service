@@ -1,0 +1,20 @@
+[Unit]
+Description=Grokked Bot daemon (test instance, from the repo)
+After=network-online.target
+
+[Service]
+Type=simple
+# The API key etc. Copy ~/.config/grokked-app/env here once.
+EnvironmentFile=%h/.config/grokked-dev/env
+Environment=GROKKED_CONFIG_DIR=%h/.config/grokked-dev
+Environment=GROKKED_DATA_DIR=%h/.local/share/grokked-dev
+Environment=GROKKED_RUNTIME_DIR=%t/grokked-dev
+Environment=GROKKED_PORT=8777
+Environment=GROKKED_HOOKS_PORT=8778
+Environment=GROKKED_CONTAINER_PREFIX=dev-
+Environment=GROKKED_IMAGE=grokked/computer:dev
+# Filled in at install time, like grokked.service.
+ExecStart=@NODE@ @REPO@/packages/daemon/src/index.ts
+WorkingDirectory=@REPO@
+Restart=on-failure
+RestartSec=2

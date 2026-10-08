@@ -67,6 +67,11 @@ export const DOCKER_HOST_SOCK: string | undefined =
 /** The bot's computer. Pulled from the registry on first run; on Linux you can
  *  still build it locally with container/build.sh and point this at the tag. */
 export const COMPUTER_IMAGE = process.env.GROKKED_IMAGE ?? 'ghcr.io/alnutile/grokked-computer:0.1'
+/** Prefix for bot computer container (and profile volume) names. Containers are
+ *  named after the bot, so a second instance on the same machine -- the test
+ *  instance next to the installed app -- needs its own prefix or it would drive
+ *  the real instance's bots' computers. */
+export const CONTAINER_PREFIX = process.env.GROKKED_CONTAINER_PREFIX ?? ''
 
 export interface ModelRoles {
   planner: string

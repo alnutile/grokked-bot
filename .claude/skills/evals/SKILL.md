@@ -29,13 +29,14 @@ conversations are never touched, and it deletes the test logins it creates.
 
 Before running:
 
-1. **Check nothing of the user's is mid-run** (`GET /v1/runs`, states `running`/`queued`
-   on bots other than `eval-bot`). Restarting the daemon or rebuilding the image while
-   a run is live recreates that bot's computer under it. Never chain a "check" and a
-   restart in one command — read the check first.
-2. **If the shim or image changed, rebuild first**
-   (`docker build -t grokked/computer:0.1 container`) and restart the daemon; the eval
-   bot's computer is recreated on the newer image automatically.
+1. **Never restart the daemon or rebuild the image without asking the user first.**
+   They use the app live on this machine — chatting, mid-reply, screen taken over,
+   webhooks in flight — none of which shows up as a live run. Checking `GET /v1/runs`
+   is not enough. Running the suite itself is fine: it only recreates `eval-bot`'s
+   computer.
+2. **If the shim or daemon changed,** say so and ask before
+   `docker build -t grokked/computer:0.1 container` + `systemctl --user restart grokked`;
+   until then, the suite tests whatever the running daemon has loaded.
 3. **Mind the cost.** A full run is ~$1 on gpt-5.6-sol or grok-4.6. Expensive models
    (anything Fable- or Opus-class) cost several times that — say the estimate and get a
    yes before running one. Check live prices with

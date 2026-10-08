@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { DATA_DIR } from '../config.ts'
+import { CONTAINER_PREFIX, DATA_DIR } from '../config.ts'
 import { log } from '../log.ts'
 import { IMAGE_PLATFORM, computerImage, docker } from './docker.ts'
 
@@ -25,7 +25,7 @@ export class LocalDockerRuntime implements BotRuntime {
   readonly image: string | undefined
 
   constructor(name: string, image?: string) {
-    this.name = name
+    this.name = CONTAINER_PREFIX + name
     this.image = image
   }
 
