@@ -16,6 +16,48 @@ the table and answered in three steps for about five cents — and said which vi
 read, so you know what to ask for next. On the right is its live screen, with a human
 holding control.
 
+## What it can do
+
+Everything below works today. Details are further down.
+
+**Bots, each with its own computer**
+- Any number of bots side by side, each in its own container with its own Chrome profile,
+  logins, files and shell.
+- A real desktop the bot drives: headful Chrome, a terminal, a file manager.
+- Watch its screen live; **take over** the mouse and keyboard at any moment and hand it back.
+- **Paste from my PC** / **Copy to my PC** between your clipboard and the bot's.
+
+**Per bot (the tabs on the right)**
+- **Details**: name, what it's for, standing instructions, the sites it may visit (enforced
+  in its computer), a max $ per message, its own model, and its look.
+- **Env**: paste a `.env` file; every shell command gets those variables, values hidden
+  from the model. A `GITHUB_TOKEN` lets it clone private repos and use `gh`.
+- **Triggers**: webhooks (bearer token, optional wait-for-answer) and cron schedules, each
+  with its own conversation.
+- **Media**: everything it saved or downloaded, previewable, openable on your desktop.
+- **Computer**: the live screen, take over, restart.
+
+**Conversations**
+- Real follow-ups ("now do 2022"), automatic titles you can rename, kept across restarts.
+- Per-message overrides of the allowed sites and spending cap (the **+** in the composer).
+- The bot stops and asks when it needs you (login wall, CAPTCHA, a question); reply or take over.
+
+**Signing in**
+- **Saved logins** (Settings → Passwords): encrypted, typed by the daemon only on the
+  login's own site, never shown to the model, limitable to particular bots.
+- **Sign in with Google / Microsoft / Apple / GitHub** through a saved provider account.
+- **HTTP (basic auth) sign-ins** answered from a saved login.
+
+**Settings**
+- Default budget and step / time limits; which models do the work and name conversations.
+- Remaining OpenRouter credit in the sidebar.
+- **Remote access**: webhooks on your Tailscale tailnet, and public ones through Funnel.
+
+**Beyond the app**
+- An HTTP + WebSocket API and a CLI (`bin/task.ts`) to start and stream runs.
+- An eval suite of ten real web tasks to compare models and catch regressions.
+- Installers for Mac (Apple Silicon, Intel) and Linux (.deb, AppImage), or run from source.
+
 ## On a Mac
 
 **[Download for Apple Silicon](https://github.com/alnutile/grokked-bot/releases/latest/download/Grokked-Bot-mac-apple-silicon.dmg)** ·
@@ -358,8 +400,7 @@ Until they are, keep the domain allowlist tight on any bot that holds real login
 
 ## Status
 
-Working today: the bot's computer, the agent loop, the desktop app, multiple bots side by
-side, budgets, human takeover.
+Working today: everything in [What it can do](#what-it-can-do).
 
 | | |
 |---|---|

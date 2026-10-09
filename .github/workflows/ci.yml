@@ -1,0 +1,45 @@
+# Checks every PR and push to main: typecheck, tests, the UI build, and the bot
+# computer image (built, not pushed). release.yml only runs on a tag, so without
+# this a broken Dockerfile or test first shows up when you cut a release.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      # The desktop app pins its own TypeScript (5.x), so check it with that one.
+      - run: pnpm exec tsc --noEmit
+        working-directory: apps/desktop
+      - run: pnpm test
+      - run: pnpm exec vite build
+        working-directory: apps/desktop
+
+  computer-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: container
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
