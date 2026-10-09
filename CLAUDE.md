@@ -25,14 +25,22 @@ When asked for a release (or a feature should reach users), in one PR:
 - Bump the version in `apps/desktop/src-tauri/tauri.conf.json`, `apps/desktop/package.json`,
   `container/shim/package.json` and `VERSION` in `packages/daemon/src/config.ts`.
   New feature: minor (0.3.0 -> 0.4.0). Fixes only: patch (0.3.0 -> 0.3.1).
-- Replace the "What's new" section at the top of `.github/release-notes.md`, written for
-  users, not developers.
+- Move the `## Unreleased` entries in `CHANGELOG.md` under a new `## X.Y.Z (date)` heading,
+  and use them for the "What's new" section at the top of `.github/release-notes.md`.
 - Merge it as above. Merging is what releases it; don't push tags.
 
 Things this environment can't do, so don't try: push to main, push tags, or start a
 workflow run (the GitHub app gets 403). If a release needs re-running, ask the owner to
 click **Run workflow** on `release` with `main` selected: it releases the current version
 if it isn't tagged yet.
+
+## Keep CHANGELOG.md current
+
+Every PR that changes what a person sees or can do adds a line under `## Unreleased` in
+`CHANGELOG.md`, in the same PR. The owner posts these updates on LinkedIn and X, so write
+each line for users: lead with the bold feature name, then what they can now do and why
+it matters, in plain words. No file names or internals unless a user would type them.
+Internal-only changes (refactors, CI, tests) don't need an entry unless users feel them.
 
 ## Keep the README current
 
