@@ -4,6 +4,7 @@ import * as z from 'zod'
 import type { Db } from '../db/index.ts'
 import type { EventBus } from '../events.ts'
 import { botEnv, redactEnv } from '../env.ts'
+import { limitsFor, modelInfo } from '../model/catalog.ts'
 import { chat, ModelError, type ChatMessage, type ToolCall } from '../model/openrouter.ts'
 import { loadConfig } from '../config.ts'
 import { log } from '../log.ts'
@@ -20,11 +21,25 @@ const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0
  *  text stand-in. Without this a 30-step browser run re-sends ~40k tokens of
  *  stale pictures on every single call. */
 const KEEP_IMAGES = 2
-const TOOL_RESULT_CAP = 4000
 /** A page snapshot has to arrive whole: the button you need is often near the
  *  end. Only the latest one is sent in full (see assembleMessages). */
 const SNAPSHOT_RESULT_CAP = 46000  // the shim fits snapshots to 40k chars plus a section map
 const SNAPSHOT_MARK = '# snapshot s'
+
+/**
+ * Fits a tool result to `cap` characters, keeping `headShare` of it from the
+ * start and the rest from the end. Shell output keeps both ends (60/40): the
+ * command's first lines and the failing test or error at the bottom, which a
+ * head-only cut always lost. Snapshots keep their head (1): the shim already
+ * fit them, with the section map up top.
+ */
+export function clip(text: string, cap: number, headShare: number): string {
+  if (text.length <= cap) return text
+  const head = Math.floor(cap * headShare)
+  const tail = cap - head
+  const cut = text.length - head - tail
+  return text.slice(0, head) + `\n…[${cut} characters cut]…\n` + (tail > 0 ? text.slice(-tail) : '')
+}
 const SNAPSHOT_URL = /# snapshot s\d+(?: of \S+)? \| (\S+) \|/
 /** Pages whose latest snapshot stays in full view (e.g. a results list and one result). */
 const KEEP_PAGES = 2
@@ -67,6 +82,9 @@ export function addHumanReply(db: Db, runId: string, text: string): void {
 
 export function createRun(db: Db, input: CreateRunInput): string {
   const cfg = loadConfig()
+  // The message's own limits, then the bot's, then Settings.
+  const bot = db.prepare('SELECT default_max_steps, default_max_usd, default_max_wall_s FROM bots WHERE id = ?')
+    .get(input.bot_id) as { default_max_steps: number | null; default_max_usd: number | null; default_max_wall_s: number | null } | undefined
   const runId = id('run')
   const t = now()
 
@@ -81,9 +99,9 @@ export function createRun(db: Db, input: CreateRunInput): string {
     ).run(
       runId, input.bot_id, threadId, input.trigger?.kind ?? 'user', input.trigger?.id ?? null, input.goal,
       JSON.stringify(input.allowed_domains ?? []),
-      input.max_steps ?? cfg.defaults.max_steps,
-      input.max_usd ?? cfg.defaults.max_usd,
-      cfg.defaults.max_wall_s,
+      input.max_steps ?? bot?.default_max_steps ?? cfg.defaults.max_steps,
+      input.max_usd ?? bot?.default_max_usd ?? cfg.defaults.max_usd,
+      bot?.default_max_wall_s ?? cfg.defaults.max_wall_s,
       cfg.defaults.max_screenshots,
       t,
     )
@@ -276,12 +294,14 @@ export async function executeStep(
   }
 
   const messages = assembleMessages(db, run, botName, bot?.persona_md ?? '')
+  // Sized from what OpenRouter says this model can take (see catalog.ts).
+  const limits = limitsFor(await modelInfo(workerModel))
   const stepNo = run.step_no + 1
 
   // ---- model call ----
   let result
   try {
-    result = await chat({ model: workerModel, messages, tools: toolDefs() })
+    result = await chat({ model: workerModel, messages, tools: toolDefs(), max_tokens: limits.maxTokens })
   } catch (e) {
     const err = e as ModelError
     log.error({ runId, err: err.message }, 'model call failed')
@@ -347,11 +367,11 @@ export async function executeStep(
   }
 
   const call = result.tool_calls[0]!
-  return await dispatchTool(db, bus, runtime, run, stepNo, call)
+  return await dispatchTool(db, bus, runtime, run, stepNo, call, limits.toolResultChars)
 }
 
 async function dispatchTool(
-  db: Db, bus: EventBus, runtime: BotRuntime, run: RunRow, stepNo: number, call: ToolCall,
+  db: Db, bus: EventBus, runtime: BotRuntime, run: RunRow, stepNo: number, call: ToolCall, resultCap: number,
 ): Promise<StepOutcome> {
   const tool = TOOLS_BY_NAME.get(call.function.name)
   const runId = run.id
@@ -456,10 +476,7 @@ async function dispatchTool(
   if (pageText) out = { ...out, text: wrapUntrusted(pageText) }
   const rendered = JSON.stringify(out)
   addMessage(db, run.thread_id, 'tool',
-    rendered.length > (rendered.includes(SNAPSHOT_MARK) ? SNAPSHOT_RESULT_CAP : TOOL_RESULT_CAP)
-      ? rendered.slice(0, rendered.includes(SNAPSHOT_MARK) ? SNAPSHOT_RESULT_CAP : TOOL_RESULT_CAP) +
-        `\n…[truncated]`
-      : rendered,
+    rendered.includes(SNAPSHOT_MARK) ? clip(rendered, SNAPSHOT_RESULT_CAP, 1) : clip(rendered, resultCap, 0.6),
     { tool_call_id: call.id, run_id: runId, step_no: stepNo })
 
   // OpenAI-shaped tool results must be strings, so an image rides in as a

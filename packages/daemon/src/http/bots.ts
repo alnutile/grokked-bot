@@ -9,6 +9,7 @@ import { botEnv, looksSecret, parseDotenv, toDotenv, type EnvVar } from '../env.
 type BotRow = {
   id: string; name: string; persona_md: string; description: string; avatar_json: string; model_roles_json: string
   default_domains_json: string; default_max_usd: number | null; created_at: number; env_enc?: string
+  default_max_steps: number | null; default_max_wall_s: number | null
 }
 
 /** The wire shape: JSON columns parsed, so the UI never sees a stringly field. */
@@ -60,6 +61,7 @@ export function mountBots(app: Hono, db: Db): void {
     const b = await c.req.json<{
       name?: string; description?: string; persona_md?: string
       default_domains?: string[]; default_max_usd?: number | null; avatar?: { shape: number; hue: number }
+      default_max_steps?: number | null; default_max_wall_s?: number | null
       worker_model?: string
     }>()
     const sets: string[] = []
@@ -70,6 +72,10 @@ export function mountBots(app: Hono, db: Db): void {
     if (typeof b.persona_md === 'string') put('persona_md', b.persona_md)
     if (Array.isArray(b.default_domains)) put('default_domains_json', JSON.stringify(b.default_domains))
     if (b.default_max_usd === null || typeof b.default_max_usd === 'number') put('default_max_usd', b.default_max_usd)
+    for (const k of ['default_max_steps', 'default_max_wall_s'] as const) {
+      const v = b[k]
+      if (v === null || (typeof v === 'number' && Number.isFinite(v) && v > 0)) put(k, v === null ? null : Math.round(v))
+    }
     if (b.avatar) put('avatar_json', JSON.stringify(b.avatar))
     if (typeof b.worker_model === 'string') {
       put('model_roles_json', JSON.stringify(b.worker_model.trim() ? { worker: b.worker_model.trim() } : {}))

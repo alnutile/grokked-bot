@@ -126,7 +126,7 @@ export function ModelPicker({ value, onChange, allowDefault }: {
               <button key={m.id} className={`model-opt ${m.id === value ? 'model-opt-on' : ''}`}
                 onClick={() => { onChange(m.id); setOpen(false); setQ('') }}>
                 <span className="model-id">{m.id}</span>
-                <span className="field-hint">{price(m)} · {Math.round(m.context_length / 1000)}k context</span>
+                <span className="field-hint">{price(m)} · {Math.round(m.context_length / 1000)}k context{m.max_completion_tokens ? ` · ${Math.round(m.max_completion_tokens / 1000)}k reply` : ''}</span>
               </button>
             ))}
             {models && matches.length === 0 && <p className="dim">No tool-capable model matches.</p>}

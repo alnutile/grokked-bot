@@ -4,6 +4,8 @@ import { readFile, writeFile, mkdir, readdir, stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
 import { aiSnapshot, fullSnapshot, refPattern } from './snapshot.js'
+import { Fail } from './fail.js'
+import { editFile, readFileLines } from './files.js'
 
 const exec = promisify(execFile)
 const CDP = `http://127.0.0.1:${process.env.CDP_PORT || 9222}`
@@ -13,13 +15,7 @@ const stringEnv = (env) => Object.fromEntries(
   Object.entries(env && typeof env === 'object' ? env : {}).filter(([, v]) => typeof v === 'string'),
 )
 
-export class Fail extends Error {
-  constructor(code, message, recovery) {
-    super(message)
-    this.code = code
-    this.recovery = recovery
-  }
-}
+export { Fail }
 
 export class Session {
   #browser = null
@@ -460,13 +456,7 @@ export class Session {
     })
   }
 
-  async read_file({ path, max_bytes = 200_000 }) {
-    const buf = await readFile(path).catch((e) => { throw new Fail('read_failed', e.message) })
-    return {
-      ok: true, path, bytes: buf.length, truncated: buf.length > max_bytes,
-      content: buf.subarray(0, max_bytes).toString('utf8'),
-    }
-  }
+  read_file(args) { return readFileLines(args) }
 
   async write_file({ path, content, append = false }) {
     // Writes stay under the work dir: that is the shared surface with the human,
@@ -478,6 +468,8 @@ export class Session {
     const st = await stat(path)
     return { ok: true, path, bytes: st.size }
   }
+
+  edit_file(args) { return editFile({ ...args, workDir: WORK_DIR }) }
 
   async list_files({ path = WORK_DIR }) {
     const names = await readdir(path, { withFileTypes: true })

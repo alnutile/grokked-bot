@@ -88,6 +88,7 @@ interface Result {
 
 async function runTask(t: EvalTask): Promise<Result> {
   if (t.checks.file) rmSync(join(WORK, t.checks.file.path), { force: true })
+  if (t.prepare) await docker('exec', CONTAINER, 'bash', '-lc', t.prepare)
   const started = Date.now()
   const run = (await post('/v1/runs', {
     bot_id: BOT, goal: t.goal, new_thread: true, allowed_domains: t.domains,
@@ -108,6 +109,9 @@ async function runTask(t: EvalTask): Promise<Result> {
   const steps = (await api(`/v1/runs/${run.id}/steps`)).steps as Array<{ status: string; result_json: string | null; args_json: string | null }>
 
   const why = grade(t.checks, r, answer, steps)
+  for (const cmd of t.checks.shell ?? []) {
+    await docker('exec', CONTAINER, 'bash', '-lc', cmd).catch(() => why.push(`failed: ${cmd}`))
+  }
   return {
     id: t.id, title: t.title, pass: why.length === 0, why, state: r.state, steps: r.step_no,
     usd: Number(r.spend_usd), secs, tool_errors: steps.filter((s) => s.status === 'error').length, run_id: run.id,

@@ -172,12 +172,39 @@ export const TOOLS: Tool[] = [
     run: (args: any, ctx: ToolCtx) => ctx.runtime.act('run_bash', { ...args, env: botEnv.forShell(ctx.db, ctx.botId) }),
   },
   {
+    name: 'read_file',
+    description:
+      'Read a text file on YOUR computer, with line numbers. For code, logs and data: cheaper and more exact ' +
+      'than cat through run_bash. Large files: pass start_line/end_line (1-based, inclusive) and read in ' +
+      'pieces; total_lines says how long it is. Use grep -n in run_bash to find where to look.',
+    schema: S({
+      path: z.string(),
+      start_line: z.number().int().positive().optional(),
+      end_line: z.number().int().positive().optional(),
+    }),
+    risk: 'low', approval: 'never', replaySafe: true, run: passthrough('read_file'),
+  },
+  {
     name: 'write_file',
     description:
       'Write a file under /data/work. Use this for scripts rather than heredocs in run_bash — quoting through ' +
       'bash is a common source of mistakes. Write a .py file, then run it with run_bash.',
     schema: S({ path: z.string(), content: z.string(), append: z.boolean().default(false) }),
     risk: 'medium', approval: 'never', replaySafe: false, run: passthrough('write_file'),
+  },
+  {
+    name: 'edit_file',
+    description:
+      'Change part of a file under /data/work: replace old_text with new_text. old_text must match the file ' +
+      'exactly (copy it from read_file without the line numbers, whitespace included) and appear once; add ' +
+      'surrounding lines until it is unique, or pass replace_all. Prefer this to rewriting a whole file.',
+    schema: S({
+      path: z.string(),
+      old_text: z.string(),
+      new_text: z.string(),
+      replace_all: z.boolean().default(false),
+    }),
+    risk: 'medium', approval: 'never', replaySafe: false, run: passthrough('edit_file'),
   },
   {
     name: 'desktop_action',

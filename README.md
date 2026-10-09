@@ -58,13 +58,23 @@ Everything below works today. Details are further down.
 
 **Per bot (the tabs on the right)**
 - **Details**: name, what it's for, standing instructions, the sites it may visit (enforced
-  in its computer), a max $ per message, its own model, and its look.
+  in its computer), its own model, its own limits per message (dollars, steps, minutes),
+  and its look.
 - **Env**: paste a `.env` file; every shell command gets those variables, values hidden
   from the model. A `GITHUB_TOKEN` lets it clone private repos and use `gh`.
 - **Triggers**: webhooks (bearer token, optional wait-for-answer) and cron schedules, each
   with its own conversation.
 - **Media**: everything it saved or downloaded, previewable, openable on your desktop.
 - **Computer**: the live screen, take over, restart.
+
+**Working on code**
+- Hand a bot a repo: it clones it, installs the language the project asks for, reads and
+  edits code, runs the tests, commits, and (with a `GITHUB_TOKEN`) pushes a branch, opens
+  a pull request, waits on CI and fixes what fails.
+- Node, Python, Go, Java, Bun and Deno install on demand with mise and are kept across
+  updates; PHP and Ruby come from apt.
+- How much it reads and writes per step follows the model: a 1M-token model sees whole
+  files and test logs, a smaller one a trimmed version.
 
 **Conversations**
 - Real follow-ups ("now do 2022"), automatic titles you can rename, kept across restarts.
@@ -84,7 +94,7 @@ Everything below works today. Details are further down.
 
 **Beyond the app**
 - An HTTP + WebSocket API and a CLI (`bin/task.ts`) to start and stream runs.
-- An eval suite of ten real web tasks to compare models and catch regressions.
+- An eval suite of twelve real tasks (eleven on the web, one coding) to compare models and catch regressions.
 - Installers for Mac (Apple Silicon, Intel) and Linux (.deb, AppImage), or run from source.
 
 ## On a Mac
@@ -239,6 +249,16 @@ git credential helper that only answers for github.com, and so does the `gh` CLI
 fine-grained token limited to the repos and permissions that bot needs, since the bot's
 shell can use it for anything that token allows.
 
+**Coding bots.** Ask a bot to work on a repo and it clones it into its computer, installs
+the runtime the project asks for (Node, Python, Go, Java, Bun and Deno through
+[mise](https://mise.jdx.dev), kept in a volume of their own so they survive updates; PHP
+and Ruby through apt), reads and edits the code, runs the project's tests and commits.
+Asked to, it pushes a branch, opens a pull request, waits on CI with `gh`, fixes what
+fails and merges. Commits are signed with the bot's name, or yours if you set
+`GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` in its Env tab. Coding takes more steps than
+browsing, so give a coding bot its own limits in **Details** (say 300 steps and 180
+minutes); the Settings defaults are 150 steps and 3 hours.
+
 **Settings** also holds the default budget and limits, and which models do the work; any
 bot can override the model in its **Details**.
 
@@ -392,7 +412,7 @@ container/act.sh run_bash command='python3 -c "print(1+1)"'
 | | |
 |---|---|
 | Browser | `navigate` `snapshot` `click` `type` `find` `read_text` `scroll` `wait_for` `screenshot` |
-| The machine | `run_bash` `write_file` `desktop_action` |
+| The machine | `run_bash` `read_file` `edit_file` `write_file` `desktop_action` |
 | Control | `finish` `give_up` `ask_human` |
 
 The system prompt tells it that it *has a computer*, not that it can call a browser API:
@@ -464,11 +484,13 @@ prompt caching (which is the biggest cost lever still on the table).
 
 ## Evals
 
-Ten everyday computer jobs, run against the real stack — daemon, bot computer, live
+Twelve everyday computer jobs, run against the real stack — daemon, bot computer, live
 websites — and graded automatically: FEC data, a dropdown inside an iframe, Wikipedia
 facts and a written briefing, Hacker News to CSV, Reddit, an Indeed search, signing in
-with a saved password, signing in with Google through a popup, and a job application
-form with a resume upload. Run them on every build, and to compare models:
+with a saved password, signing in with Google through a popup, a browser sign-in popup,
+a job application form with a resume upload, and fixing a failing test in a Node repo
+(graded by what the bot left behind: tests pass, a commit on the right branch, the test
+file untouched). Run them on every build, and to compare models:
 
 ```bash
 pnpm eval                                  # the Settings worker model

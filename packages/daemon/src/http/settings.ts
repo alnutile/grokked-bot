@@ -1,28 +1,8 @@
 import type { Hono } from 'hono'
-import { loadConfig, OPENROUTER_KEY, OPENROUTER_URL, saveConfig } from '../config.ts'
+import { loadConfig, saveConfig } from '../config.ts'
 import type { Db } from '../db/index.ts'
+import { toolModels } from '../model/catalog.ts'
 import { vault, type CredentialInput } from '../vault.ts'
-
-interface ModelInfo { id: string; name: string; context_length: number; prompt_per_m: number; completion_per_m: number }
-
-/** OpenRouter's tool-capable models, for the model pickers. Cached: the list is
- *  large and changes slowly. */
-let modelCache: { at: number; models: ModelInfo[] } | null = null
-async function toolModels(): Promise<ModelInfo[]> {
-  if (modelCache && Date.now() - modelCache.at < 3600_000) return modelCache.models
-  const res = await fetch(`${OPENROUTER_URL}/models?supported_parameters=tools`, {
-    headers: { authorization: `Bearer ${OPENROUTER_KEY}` },
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!res.ok) throw new Error(`OpenRouter /models answered ${res.status}`)
-  const data = ((await res.json()) as any).data as any[]
-  const models = data.map((m) => ({
-    id: String(m.id), name: String(m.name ?? m.id), context_length: Number(m.context_length ?? 0),
-    prompt_per_m: Number(m.pricing?.prompt ?? 0) * 1e6, completion_per_m: Number(m.pricing?.completion ?? 0) * 1e6,
-  })).sort((a, b) => a.id.localeCompare(b.id))
-  modelCache = { at: Date.now(), models }
-  return models
-}
 
 export function mountSettings(app: Hono, db: Db): void {
   app.get('/v1/settings', (c) => c.json(loadConfig()))
