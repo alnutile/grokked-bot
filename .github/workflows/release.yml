@@ -5,8 +5,9 @@
 # Linux, tags the commit vX.Y.Z and opens a *draft* GitHub release with the notes from
 # .github/release-notes.md. Publish it from the Releases page.
 #
-# Pushing a tag by hand (git tag v0.2.0 && git push origin v0.2.0) still works, and
-# running it from the Actions tab is a test build with no release. File names never change, so
+# Pushing a tag by hand (git tag v0.2.0 && git push origin v0.2.0) still works. Running
+# it from the Actions tab on main releases the current version if it has no tag yet
+# (handy to retry a failed release); on any other branch it is a test build. File names never change, so
 #   https://github.com/<owner>/<repo>/releases/latest/download/Grokked-Bot-mac-apple-silicon.dmg
 # always serves the newest one.
 name: release
@@ -42,7 +43,8 @@ jobs:
             V="${GITHUB_REF_NAME#v}"; BUILD=true; RELEASE=true
           else
             V="$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)"; BUILD=true; RELEASE=false
-            if [ "$GITHUB_EVENT_NAME" = push ]; then
+            # A merge to main, or "Run workflow" on main, releases an untagged version.
+            if [ "$GITHUB_REF" = refs/heads/main ]; then
               if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then
                 echo "v$V is already tagged; nothing to release"; BUILD=false
               else
