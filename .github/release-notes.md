@@ -1,12 +1,14 @@
-## What's new in 0.2.1
+## What's new in 0.3.0
 
-- **Sites with a browser "Sign in" popup** (HTTP basic auth, e.g. Swagger docs) now work:
-  save the login in Settings → Passwords and the bot signs in without ever seeing the
-  password.
-- **Media tab**: text and JSON files preview again in the installed app (they said
-  "Load failed"), and new **Open**, **Show in folder** and **Open folder** buttons.
-- **Bot computers update with the app.** On first launch after upgrading, the app
-  downloads the matching bot computer image; your bots' site logins carry over.
+- **Environment variables per bot.** A new **Env** tab: paste a `.env` file and every
+  command the bot runs in its shell gets those variables. They're stored encrypted, the
+  bot is told their names but never their values, and secret-looking values are masked
+  in everything it sees.
+- **Bots can work on GitHub.** Put a `GITHUB_TOKEN` in a bot's Env tab and it can
+  `git clone` your private repos and use the `gh` command. The token never shows up in
+  the conversation. Use a fine-grained token limited to the repos that bot needs.
+- The bot's computer now includes `git`, `gh` and `jq`. On first launch after upgrading,
+  the app downloads the new bot computer image; your bots' site logins carry over.
 
 ## Download for Mac
 

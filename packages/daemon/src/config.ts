@@ -10,7 +10,7 @@ const xdg = (envVar: string, fallback: string) =>
     ? process.env[envVar]!
     : join(homedir(), fallback)
 
-export const VERSION = '0.2.1'
+export const VERSION = '0.3.0'
 export const INSTANCE_ID = `inst_${randomUUID().replaceAll('-', '').slice(0, 16)}`
 
 // macOS has no XDG dirs and no /run/user. Everything lives under Application
