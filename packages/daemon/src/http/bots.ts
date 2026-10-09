@@ -4,15 +4,17 @@ import { extname, join, relative, resolve, sep } from 'node:path'
 import type { Hono } from 'hono'
 import { DATA_DIR } from '../config.ts'
 import type { Db } from '../db/index.ts'
+import { botEnv, looksSecret, parseDotenv, toDotenv, type EnvVar } from '../env.ts'
 
 type BotRow = {
   id: string; name: string; persona_md: string; description: string; avatar_json: string; model_roles_json: string
-  default_domains_json: string; default_max_usd: number | null; created_at: number
+  default_domains_json: string; default_max_usd: number | null; created_at: number; env_enc?: string
 }
 
 /** The wire shape: JSON columns parsed, so the UI never sees a stringly field. */
 export const shapeBot = (b: BotRow) => {
-  const { avatar_json, default_domains_json, model_roles_json, ...rest } = b
+  // env_enc stays out: it has its own endpoint, and the bot list goes everywhere.
+  const { avatar_json, default_domains_json, model_roles_json, env_enc: _env, ...rest } = b
   return {
     ...rest,
     /** Overrides Settings for this bot; empty means use Settings. */
@@ -77,6 +79,26 @@ export function mountBots(app: Hono, db: Db): void {
       db.prepare(`UPDATE bots SET ${sets.join(', ')} WHERE id = ?`).run(...vals, id)
     }
     return c.json({ bot: getBot(db, id) })
+  })
+
+  /** Its environment variables, values included: this API is the human's, behind the token. */
+  const envBody = (vars: EnvVar[], skipped: string[] = []) => ({
+    vars: vars.map((v) => ({ ...v, secret: looksSecret(v) })), text: toDotenv(vars), skipped,
+  })
+  app.get('/v1/bots/:id/env', (c) => {
+    const id = c.req.param('id')
+    if (!getBot(db, id)) return c.json({ error: 'not_found' }, 404)
+    return c.json(envBody(botEnv.get(db, id)))
+  })
+
+  /** Replaces the whole set: `{text}` is a pasted .env file, `{vars}` a list. */
+  app.put('/v1/bots/:id/env', async (c) => {
+    const id = c.req.param('id')
+    if (!getBot(db, id)) return c.json({ error: 'not_found' }, 404)
+    const b = await c.req.json<{ text?: string; vars?: EnvVar[] }>()
+    const parsed = typeof b.text === 'string' ? parseDotenv(b.text) : { vars: Array.isArray(b.vars) ? b.vars : [], skipped: [] }
+    const saved = botEnv.set(db, id, parsed.vars)
+    return c.json(envBody(saved.vars, [...parsed.skipped, ...saved.skipped]))
   })
 
   /** What the bot has made or downloaded, newest first. */

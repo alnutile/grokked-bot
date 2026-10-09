@@ -9,6 +9,10 @@ const exec = promisify(execFile)
 const CDP = `http://127.0.0.1:${process.env.CDP_PORT || 9222}`
 const WORK_DIR = process.env.WORK_DIR || '/data/work'
 
+const stringEnv = (env) => Object.fromEntries(
+  Object.entries(env && typeof env === 'object' ? env : {}).filter(([, v]) => typeof v === 'string'),
+)
+
 export class Fail extends Error {
   constructor(code, message, recovery) {
     super(message)
@@ -417,7 +421,7 @@ export class Session {
   // curl, python3, jq, ffmpeg, git and node are all already in the image, which
   // makes a whole class of jobs a one-liner instead of twenty clicks.
 
-  async run_bash({ command, timeout_s = 60, cwd = WORK_DIR }) {
+  async run_bash({ command, timeout_s = 60, cwd = WORK_DIR, env = {} }) {
     if (typeof command !== 'string' || !command.trim()) {
       throw new Fail('bad_command', 'command must be a non-empty string')
     }
@@ -425,7 +429,8 @@ export class Session {
     return await new Promise((resolve) => {
       const child = spawn('/bin/bash', ['-lc', command], {
         cwd,
-        env: { ...process.env, TERM: 'dumb' },
+        // The bot's own variables from the app, on top of the computer's.
+        env: { ...process.env, ...stringEnv(env), TERM: 'dumb' },
       })
       let out = '', err = '', killed = false
       const CAP = 200_000

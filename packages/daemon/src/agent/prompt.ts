@@ -5,6 +5,8 @@ export interface PromptCtx {
   allowedDomains: string[]
   maxSteps: number
   workDir?: string
+  /** Names of the bot's environment variables; the values never reach the model. */
+  envKeys?: string[]
 }
 
 /**
@@ -74,7 +76,7 @@ which you can't see or click — you'll get \`http_auth_required\`; answer it wi
 \`browser_http_auth\`. Only ask the human when nothing is saved, or for MFA codes, phone
 prompts and CAPTCHAs.
 
-**Take notes as you go.** Only the pages you looked at most recently stay in full view;
+${envSection(c.envKeys ?? [])}**Take notes as you go.** Only the pages you looked at most recently stay in full view;
 older ones drop out to save tokens. Before you leave a page, write what you'll need from it
 (names, numbers, links) in your message. Never go back to a page just to re-read something
 you could have noted.
@@ -111,6 +113,20 @@ current one; use them to make sense of follow-ups like "did it work?" or "now do
 same for 2022", and answer a plain question with \`finish\` rather than starting work.
 
 ${c.goal}`
+}
+
+function envSection(keys: string[]): string {
+  if (!keys.length) return ''
+  const github = keys.includes('GITHUB_TOKEN') || keys.includes('GH_TOKEN')
+  return `**Environment variables.** The human set these for you, and every \`run_bash\` has them:
+${keys.map((k) => `\`${k}\``).join(', ')}. Use them by name (\`"$${keys[0]}"\`) in commands and scripts.
+You can't see their values and don't need to: secret-looking ones show up as \`[$NAME]\` in
+output. Never write one to a file in \`/data/work/out\` or put it in a message.
+${github ? `GitHub is set up with that token: \`git clone https://github.com/OWNER/REPO\` works for private
+repos with no token in the URL, and so does \`gh\` (\`gh repo clone\`, \`gh api\`, \`gh pr create\`). Clone
+into \`/data/work/repos\`. Only push, open PRs or comment when the task asks for it.
+` : ''}
+`
 }
 
 /** Page-derived text is attacker-controlled; fence it so it reads as data. */

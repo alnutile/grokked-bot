@@ -87,6 +87,10 @@ export interface RemoteStatus {
   tailnet_base?: string; public_base?: string; local_base: string
 }
 
+/** `secret` = masked in the bot's output; the daemon decides, the UI just shows it. */
+export interface EnvVar { key: string; value: string; secret: boolean }
+export interface BotEnv { vars: EnvVar[]; text: string; skipped: string[] }
+
 export interface BotFile { path: string; abs: string; size: number; mtime: number }
 /** A chat line rebuilt by the daemon from SQLite. */
 export interface ThreadEntry {
@@ -161,6 +165,10 @@ export const api = {
     req<{ thread: { id: string; bot_id: string; title: string | null }; entries: ThreadEntry[]; run: Run | null }>(`/v1/threads/${id}`),
   renameThread: (id: string, title: string) =>
     req(`/v1/threads/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
+  env: (botId: string) => req<BotEnv>(`/v1/bots/${botId}/env`),
+  /** Replaces the whole set with what a pasted .env file says. */
+  saveEnv: (botId: string, text: string) =>
+    req<BotEnv>(`/v1/bots/${botId}/env`, { method: 'PUT', body: JSON.stringify({ text }) }),
   files: (botId: string) => req<{ root: string; files: BotFile[] }>(`/v1/bots/${botId}/files`),
   /** A text file's contents, read straight from the daemon. (Not via a blob:
    *  URL: the release CSP's connect-src has no blob:, so fetching one fails
