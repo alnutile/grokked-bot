@@ -62,6 +62,10 @@ function Details({ bot, onChange }: { bot: Bot; onChange: (b: Bot) => void }) {
   const [persona, setPersona] = useState(bot.persona_md)
   const [domains, setDomains] = useState(bot.default_domains.join(', '))
   const [budget, setBudget] = useState(bot.default_max_usd?.toString() ?? '')
+  const [steps, setSteps] = useState(bot.default_max_steps?.toString() ?? '')
+  const [minutes, setMinutes] = useState(bot.default_max_wall_s ? String(bot.default_max_wall_s / 60) : '')
+  // Blank means "use Settings"; anything else must be a positive number.
+  const num = (v: string) => (v.trim() && Number(v) > 0 ? Number(v) : null)
   const [saved, setSaved] = useState<string | null>(null)
 
   const save = async (patch: Parameters<typeof api.updateBot>[1]) => {
@@ -102,6 +106,19 @@ function Details({ bot, onChange }: { bot: Bot; onChange: (b: Bot) => void }) {
           onChange={(e) => setBudget(e.target.value)}
           onBlur={() => save({ default_max_usd: budget.trim() ? Number(budget) : null })} />
       </label>
+      <div className="field-row">
+        <label>Max steps per message
+          <input value={steps} inputMode="numeric" placeholder="Settings default"
+            onChange={(e) => setSteps(e.target.value)}
+            onBlur={() => save({ default_max_steps: num(steps) })} />
+        </label>
+        <label>Max minutes per message
+          <input value={minutes} inputMode="numeric" placeholder="Settings default"
+            onChange={(e) => setMinutes(e.target.value)}
+            onBlur={() => { const m = num(minutes); save({ default_max_wall_s: m === null ? null : Math.round(m * 60) }) }} />
+        </label>
+      </div>
+      <span className="field-hint">Give a coding bot room (300 steps, 180 minutes); keep a shopping bot tight. Blank uses Settings.</span>
       <div className="field">
         <span className="field-label">Model</span>
         <ModelPicker value={bot.worker_model} allowDefault="Use the Settings model"

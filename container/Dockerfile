@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tint2 xterm pcmanfm \
       x11-utils x11-xserver-utils dbus-x11 \
       supervisor tini ffmpeg \
-      git gh jq \
+      git gh jq curl ca-certificates \
       fonts-liberation fonts-dejavu-core fonts-noto-color-emoji fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
@@ -38,6 +38,23 @@ RUN for i in 1 2 3 4; do \
       [ "$i" = 4 ] && exit 1; echo "chrome install failed, retrying ($i)"; sleep 20; \
     done \
     && rm -rf /root/.npm /tmp/*
+
+# Language runtimes come on demand, not baked in: mise installs any version of
+# Node, PHP, Ruby, Go, Python... into /data/tools, a volume of its own, so the
+# image stays small and what a bot installs survives a new image. apt installs
+# still land in the container and are lost when it is recreated.
+RUN for i in 1 2 3 4; do \
+      curl -fsSL https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh && break; \
+      [ "$i" = 4 ] && exit 1; echo "mise install failed, retrying ($i)"; sleep 10; \
+    done \
+    && mise --version
+ENV MISE_DATA_DIR=/data/tools/mise \
+    MISE_CACHE_DIR=/data/tools/cache \
+    MISE_GLOBAL_CONFIG_FILE=/data/tools/mise/config.toml \
+    MISE_YES=1 \
+    PATH=/data/tools/mise/shims:/data/tools/bin:$PATH
+# run_bash is a login shell, and Ubuntu's /etc/profile resets root's PATH.
+RUN printf '%s\n' 'export PATH="/data/tools/mise/shims:/data/tools/bin:$PATH"' > /etc/profile.d/grokked-tools.sh
 
 WORKDIR /opt/shim
 COPY shim/package.json ./package.json

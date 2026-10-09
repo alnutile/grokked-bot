@@ -107,14 +107,21 @@ export function loadConfig(): Config {
   const path = join(CONFIG_DIR, 'config.json')
   const base: Config = {
     models: DEFAULT_MODELS,
-    defaults: { max_steps: 40, max_usd: 10.0, max_wall_s: 3600, max_screenshots: 12 },
+    // Room for real work: a coding job (clone, install, test, fix, push, wait on
+    // CI) takes 100+ steps. Dollars stay the guardrail; a bot can set its own.
+    defaults: { max_steps: 150, max_usd: 10.0, max_wall_s: 3 * 3600, max_screenshots: 12 },
   }
   if (!existsSync(path)) {
     writeFileSync(path, JSON.stringify(base, null, 2) + '\n', { mode: 0o600 })
     return base
   }
   try {
-    const user = JSON.parse(readFileSync(path, 'utf8')) as Partial<Config>
+    const user = JSON.parse(readFileSync(path, 'utf8')) as { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']> }
+    // First boot wrote the defaults of the day into config.json, so an install that
+    // never touched them still says 40 steps / 1 hour. Those are the old defaults,
+    // not a choice: let them follow the new ones.
+    if (user.defaults?.max_steps === 40) delete user.defaults.max_steps
+    if (user.defaults?.max_wall_s === 3600) delete user.defaults.max_wall_s
     return {
       models: { ...base.models, ...(user.models ?? {}) },
       defaults: { ...base.defaults, ...(user.defaults ?? {}) },

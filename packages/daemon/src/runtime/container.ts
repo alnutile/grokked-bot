@@ -32,9 +32,9 @@ export class LocalDockerRuntime implements BotRuntime {
   async ensureUp(): Promise<void> {
     let running = await this.#state()
 
-    // Recreate a computer that is out of date: built from an older image, or from
+    // Recreate a computer that is out of date: built from an older image, from
     // before per-bot ports (all pinned to 16080/18088, so only one bot could be
-    // up). The profile volume and work dir carry over, so logins survive.
+    // up), or from before the /data/tools volume. The profile volume and work dir carry over, so logins survive.
     const stale = running !== null && await this.#staleReason()
     if (stale) {
       log.info({ bot: this.name, reason: stale }, 'recreating bot computer')
@@ -52,6 +52,8 @@ export class LocalDockerRuntime implements BotRuntime {
       await docker([
         'run', '-d', '--name', this.name, '--platform', IMAGE_PLATFORM,
         '-v', `${this.name}-profile:/data/profile`,
+        // Toolchains the bot installs (mise): kept when the computer is recreated.
+        '-v', `${this.name}-tools:/data/tools`,
         '-v', `${work}:/data/work`,
         '--shm-size=2g', '--memory=6g', '--cpus=3', '--pids-limit=1024',
         '--security-opt', 'no-new-privileges',
@@ -80,6 +82,8 @@ export class LocalDockerRuntime implements BotRuntime {
     const [imageId, json] = [stdout.slice(0, stdout.indexOf(' ')), stdout.slice(stdout.indexOf(' ') + 1)]
     const bindings = JSON.parse(json) as Record<string, Array<{ HostPort: string }>> | null
     if (Object.values(bindings ?? {}).some((bs) => bs.some((b) => b.HostPort !== ''))) return 'pinned ports'
+    const mounts = await docker(['inspect', '-f', '{{range .Mounts}}{{.Destination}} {{end}}', this.name])
+    if (!mounts.stdout.split(' ').includes('/data/tools')) return 'no toolchain volume'
     const current = await docker(['image', 'inspect', '-f', '{{.Id}}', this.image ?? await computerImage()])
       .then((r) => r.stdout.trim()).catch(() => null)
     if (current && current !== imageId) return 'newer image'

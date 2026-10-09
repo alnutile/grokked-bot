@@ -77,5 +77,13 @@ assert.ok(seen.stdout.includes('NODE_ENV=staging'), 'plain values stay readable'
 console.log('  ok  run_bash gets the variables; the model sees only names')
 
 botEnv.set(db, 'bot-a', [])
-assert.deepEqual(botEnv.forShell(db, 'bot-a'), {})
+const bare = botEnv.forShell(db, 'bot-a')
+assert.equal(bare.GH_TOKEN, undefined)
+assert.equal(bare.NODE_ENV, undefined)
 console.log('  ok  clearing removes them')
+
+assert.equal(bare.GIT_AUTHOR_NAME, 'A')
+assert.equal(bare.GIT_COMMITTER_EMAIL, 'bot-a@grokked-bot.local')
+botEnv.set(db, 'bot-a', [{ key: 'GIT_AUTHOR_NAME', value: 'Al' }, { key: 'GIT_AUTHOR_EMAIL', value: 'al@example.com' }])
+assert.equal(botEnv.forShell(db, 'bot-a').GIT_COMMITTER_EMAIL, 'al@example.com')
+console.log('  ok  commits get the bot name, or the identity the human set')

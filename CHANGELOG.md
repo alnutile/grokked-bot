@@ -6,6 +6,17 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **Bots that can code.** Hand a bot a repo and it clones it, installs the language the
+  project needs, reads and edits the code, runs the tests and commits. With a GitHub token
+  it pushes a branch, opens a pull request, waits on CI and fixes what fails. Languages it
+  installs stay installed, even after an update.
+- **Each bot gets its own limits.** Set max steps and minutes per message in a bot's
+  Details, so a coding bot can work for hours while a shopping bot stays on a short leash.
+  The defaults are higher too: 150 steps and 3 hours.
+- **Limits that follow the model.** How much a bot reads and writes in one step now comes
+  from what OpenRouter says the model can handle, so a 1M-token model sees whole files and
+  test logs. Switch models and it adjusts on its own.
+
 - **A clearer README.** It opens with a Get started section: what you need, which
   download fits your machine, and your first task in about a minute.
 - **Every change is checked before it lands.** Tests, type checks and a full build of

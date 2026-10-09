@@ -114,6 +114,14 @@ export const botEnv = {
    */
   forShell(db: Db, botId: string): Record<string, string> {
     const env = Object.fromEntries(botEnv.get(db, botId).map((v) => [v.key, v.value]))
+    // Commits need a name and email or git refuses. The bot's own name unless the
+    // human set GIT_AUTHOR_NAME / GIT_AUTHOR_EMAIL (e.g. to their own, so commits
+    // link to their GitHub account).
+    const bot = db.prepare('SELECT name FROM bots WHERE id = ?').get(botId) as { name: string } | undefined
+    env.GIT_AUTHOR_NAME ||= bot?.name || 'Grokked Bot'
+    env.GIT_AUTHOR_EMAIL ||= `${botId}@grokked-bot.local`
+    env.GIT_COMMITTER_NAME ||= env.GIT_AUTHOR_NAME
+    env.GIT_COMMITTER_EMAIL ||= env.GIT_AUTHOR_EMAIL
     const gh = env.GH_TOKEN || env.GITHUB_TOKEN
     if (gh) {
       env.GH_TOKEN ??= gh

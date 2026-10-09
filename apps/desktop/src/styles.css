@@ -201,6 +201,7 @@ button { font: inherit; }
   padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical; outline: none; }
 .details input:focus, .details textarea:focus { border-color: var(--accent); }
 .field-hint { font-size: 11px; color: #6b727e; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .look-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
 .look-opt { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 4px; cursor: pointer; }
 .look-on { border-color: var(--accent); }

@@ -22,6 +22,9 @@ export interface Check {
   file?: { path: string; minLines?: number; minHeadings?: number; all?: string[]; any?: string[] }
   /** Secrets that must not appear anywhere in the run: answer, steps or tool results. */
   noLeak?: string[]
+  /** Commands run in the bot's computer afterwards (bash -lc); each must exit 0. Grades
+   *  what the bot actually left behind, not what it says it did. */
+  shell?: string[]
 }
 
 export interface EvalTask {
@@ -35,6 +38,8 @@ export interface EvalTask {
   max_steps?: number
   max_usd?: number
   timeout_s?: number
+  /** Run in the bot's computer before the task (bash -lc), to lay out its starting state. */
+  prepare?: string
 }
 
 export const SECRETS = { login: 'eval-hunter2-SECRET', google: 'eval-g00gle-SECRET', basic: 'eval-b4sic-SECRET' }
@@ -128,5 +133,30 @@ export const TASKS: EvalTask[] = [
     goal: 'Fill in and submit the job application at http://localhost:8000/apply.html as: name Ada Lovelace, email ada@example.com, country Canada, 7 years of Laravel experience, and attach the resume at /data/work/inbox/resume.pdf. Accept the privacy policy. Then tell me exactly what the confirmation page says.',
     domains: [],
     checks: { all: ['Application received', 'resume.pdf', 'Canada', 'Ada Lovelace'] },
+  },
+  {
+    id: 'code-fix',
+    title: 'Code: fix a failing test and commit',
+    tests: 'reading code, the right Node from mise, editing, running tests, git',
+    prepare:
+      'rm -rf /data/work/repos/calc && mkdir -p /data/work/repos && cp -r /tmp/site/calc /data/work/repos/calc && ' +
+      'cd /data/work/repos/calc && git init -q -b main && git add -A && ' +
+      'git -c user.name=eval -c user.email=eval@example.com commit -qm "calc"',
+    goal: 'The Node project in /data/work/repos/calc has a failing test. Use the Node version the project asks ' +
+      'for. Find the bug in the code (not in the tests), fix it, make sure `npm test` passes, and commit the ' +
+      'fix on a new branch named fix-add. Tell me which test failed and what you changed.',
+    domains: [],
+    checks: {
+      any: ['add'],
+      shell: [
+        'cd /data/work/repos/calc && git rev-parse --verify -q fix-add',
+        'cd /data/work/repos/calc && git checkout -q fix-add && npm test',
+        'cd /data/work/repos/calc && git diff --quiet main fix-add -- calc.test.js',
+        'cd /data/work/repos/calc && test -z "$(git status --porcelain)"',
+        'mise ls --installed node | grep -q " 22\\."',
+      ],
+    },
+    max_steps: 40,
+    max_usd: 2,
   },
 ]

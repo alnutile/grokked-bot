@@ -44,6 +44,8 @@ export interface Bot {
   id: string; name: string; persona_md: string; description: string
   avatar: { shape?: number; hue?: number }
   default_domains: string[]; default_max_usd: number | null
+  /** Per-message limits over Settings; null uses Settings. */
+  default_max_steps: number | null; default_max_wall_s: number | null
   /** Overrides the Settings worker model for this bot; '' uses Settings. */
   worker_model: string
   autonomy: string; status: string; created_at: number
@@ -61,7 +63,7 @@ export interface Settings {
   defaults: { max_steps: number; max_usd: number; max_wall_s: number; max_screenshots: number }
 }
 
-export interface ModelInfo { id: string; name: string; context_length: number; prompt_per_m: number; completion_per_m: number }
+export interface ModelInfo { id: string; name: string; context_length: number; max_completion_tokens: number; prompt_per_m: number; completion_per_m: number }
 
 export interface Credential {
   id: string; label: string; url: string; domain: string; username: string
@@ -158,7 +160,7 @@ export const api = {
     req<{ credential: Credential }>(`/v1/credentials/${id}`, { method: 'PATCH', body: JSON.stringify(c) }).then((r) => r.credential),
   deleteCredential: (id: string) => req(`/v1/credentials/${id}`, { method: 'DELETE' }),
   revealCredential: (id: string) => req<{ password: string }>(`/v1/credentials/${id}/reveal`).then((r) => r.password),
-  updateBot: (id: string, patch: Partial<Pick<Bot, 'name' | 'description' | 'persona_md' | 'default_domains' | 'default_max_usd' | 'avatar' | 'worker_model'>>) =>
+  updateBot: (id: string, patch: Partial<Pick<Bot, 'name' | 'description' | 'persona_md' | 'default_domains' | 'default_max_usd' | 'default_max_steps' | 'default_max_wall_s' | 'avatar' | 'worker_model'>>) =>
     req<{ bot: Bot }>(`/v1/bots/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.bot),
   threads: () => req<{ threads: ThreadSummary[] }>('/v1/threads').then((r) => r.threads),
   threadById: (id: string) =>
