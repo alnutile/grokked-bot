@@ -502,6 +502,8 @@ AppImage, and the bot computer image on `ghcr.io/alnutile/grokked-computer`. It 
 release, run the `release` workflow by hand on main. A local Mac build is
 `scripts/build-mac.sh`.
 
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+
 `CLAUDE.md` has the working rules for AI agents on this repo, including keeping the
 [What it can do](#what-it-can-do) list current with every change.
 
