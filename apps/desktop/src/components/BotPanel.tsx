@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener'
-import { api, type Bot, type BotFile } from '../api.ts'
+import { api, type Bot, type BotEnv, type BotFile } from '../api.ts'
 import { Avatar, look } from './Avatar.tsx'
 import { ComputerPanel } from './ComputerPanel.tsx'
 import { ModelPicker } from './Settings.tsx'
 import { Triggers } from './Triggers.tsx'
 
-type Tab = 'details' | 'triggers' | 'media' | 'computer'
+type Tab = 'details' | 'env' | 'triggers' | 'media' | 'computer'
+const TAB_LABEL: Record<Tab, string> = { details: 'Details', env: 'Env', triggers: 'Triggers', media: 'Media', computer: 'Computer' }
 
 /** The bot itself: who it is, what it has made, and its live computer. */
 export function BotPanel({ bot, initialTab = 'computer', onChange, onOpenThread }: {
@@ -33,15 +34,17 @@ export function BotPanel({ bot, initialTab = 'computer', onChange, onOpenThread 
         <div className="profile-name">{bot.name}</div>
         <div className="profile-desc">{bot.description || <span className="dim">No description yet</span>}</div>
         <div className="tabs">
-          {(['details', 'triggers', 'media', 'computer'] as const).map((t) => (
-            <button key={t} className={`tab ${tab === t ? 'tab-on' : ''}`} onClick={() => setTab(t)}>
-              {t[0]!.toUpperCase() + t.slice(1)}
+          {(['details', 'env', 'triggers', 'media', 'computer'] as const).map((t) => (
+            <button key={t} className={`tab ${tab === t ? 'tab-on' : ''}`} onClick={() => setTab(t)}
+              title={t === 'env' ? 'Environment variables' : undefined}>
+              {TAB_LABEL[t]}
             </button>
           ))}
         </div>
       </div>
       <div className="tab-body">
         {tab === 'details' && <Details bot={bot} onChange={onChange} />}
+        {tab === 'env' && <Env bot={bot} />}
         {tab === 'triggers' && <Triggers bot={bot} onOpenThread={onOpenThread} />}
         {tab === 'media' && <Media bot={bot} />}
         {tab === 'computer' && (
@@ -119,6 +122,77 @@ function Details({ bot, onChange }: { bot: Bot; onChange: (b: Bot) => void }) {
         </div>
       </div>
       <div className="field-hint">{saved ?? `id ${bot.id}`}</div>
+    </div>
+  )
+}
+
+/** Its shell's environment variables, pasted in as a .env file. */
+function Env({ bot }: { bot: Bot }) {
+  const [env, setEnv] = useState<BotEnv | null>(null)
+  const [draft, setDraft] = useState<string | null>(null)
+  const [shown, setShown] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    setEnv(null); setDraft(null); setShown(false)
+    api.env(bot.id).then((e) => { setEnv(e); if (!e.vars.length) setDraft('') }).catch((e) => setErr(String(e.message)))
+  }, [bot.id])
+
+  const save = async () => {
+    if (draft === null) return
+    try {
+      const e = await api.saveEnv(bot.id, draft)
+      setEnv(e); setDraft(e.vars.length ? null : ''); setErr(null)
+      setNote(e.skipped.length ? `Saved. Skipped: ${e.skipped.join(', ')}` : `Saved ${e.vars.length} variable${e.vars.length === 1 ? '' : 's'}`)
+    } catch (e) { setErr(`Couldn't save: ${(e as Error).message}`) }
+  }
+
+  if (!env) return <div className="details">{err ? <p className="hint err">{err}</p> : <p className="dim">Loading…</p>}</div>
+  const github = env.vars.some((v) => v.key === 'GITHUB_TOKEN' || v.key === 'GH_TOKEN')
+
+  return (
+    <div className="details">
+      <span className="field-hint">
+        Every command {bot.name} runs in its shell gets these. It's told their names, never their values, and
+        secret-looking values are masked in what it sees. Stored encrypted, like saved passwords.
+      </span>
+      {draft !== null ? (
+        <>
+          <label>.env
+            <textarea rows={12} value={draft} spellCheck={false} className="env-text"
+              placeholder={'# Paste a .env file\nGITHUB_TOKEN=github_pat_...\nAPI_BASE_URL=https://api.example.com'}
+              onChange={(e) => setDraft(e.target.value)} />
+          </label>
+          <div className="row-gap">
+            <button className="btn btn-sm" onClick={save}>Save</button>
+            {env.vars.length > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setDraft(null)}>Cancel</button>}
+          </div>
+          {env.vars.length > 0 && <span className="field-hint">Saving replaces the whole set. Delete a line to remove that variable.</span>}
+        </>
+      ) : (
+        <>
+          <div className="env-list">
+            {env.vars.map((v) => (
+              <div key={v.key} className="env-row">
+                <code className="env-key">{v.key}</code>
+                <code className="env-val">{v.secret && !shown ? '••••••••' : v.value || <span className="dim">(empty)</span>}</code>
+              </div>
+            ))}
+          </div>
+          <div className="row-gap">
+            <button className="btn btn-sm" onClick={() => setDraft(env.text)}>Edit</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShown((s) => !s)}>{shown ? 'Hide values' : 'Show values'}</button>
+          </div>
+        </>
+      )}
+      <span className="field-hint">
+        {github
+          ? 'GitHub: git clone over https and the gh CLI use this token, so it can work on private repos. Give the token only the repos and permissions this bot needs.'
+          : 'To let it clone and work on GitHub repos, add GITHUB_TOKEN: a fine-grained token limited to the repos it needs.'}
+      </span>
+      {err && <p className="hint err">{err}</p>}
+      {note && <span className="field-hint">{note}</span>}
     </div>
   )
 }

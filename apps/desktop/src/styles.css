@@ -205,6 +205,12 @@ button { font: inherit; }
 .look-opt { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 4px; cursor: pointer; }
 .look-on { border-color: var(--accent); }
 .hue { flex: 1; accent-color: var(--accent); }
+.details textarea.env-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre; }
+.env-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.env-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; padding: 7px 10px; font-size: 12px; }
+.env-row + .env-row { border-top: 1px solid var(--line); }
+.env-key, .env-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.env-val { color: var(--dim); }
 
 .media { display: flex; flex-direction: column; gap: 2px; padding: 6px 12px 16px; }
 .media-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 6px; font-size: 12px; }

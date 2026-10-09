@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import * as z from 'zod'
 import type { Db } from '../db/index.ts'
 import type { EventBus } from '../events.ts'
+import { botEnv, redactEnv } from '../env.ts'
 import { chat, ModelError, type ChatMessage, type ToolCall } from '../model/openrouter.ts'
 import { loadConfig } from '../config.ts'
 import { log } from '../log.ts'
@@ -144,6 +145,7 @@ function assembleMessages(db: Db, run: RunRow, botName: string, personaMd: strin
       goal: run.goal,
       allowedDomains: JSON.parse(run.allowed_domains_json) as string[],
       maxSteps: run.max_steps,
+      envKeys: botEnv.keys(db, run.bot_id),
     }),
   }]
 
@@ -437,6 +439,9 @@ async function dispatchTool(
     delete out.image_base64
     db.prepare('UPDATE runs SET screenshot_count = screenshot_count + 1 WHERE id = ?').run(runId)
   }
+
+  // Its variables are named to the model, never shown: mask any value a tool echoed back.
+  out = redactEnv(out, botEnv.get(db, run.bot_id))
 
   db.prepare(`UPDATE run_steps SET status = ?, result_json = ?, ended_at = ? WHERE run_id = ? AND step_no = ?`)
     .run(out?.ok === false ? 'error' : 'ok', JSON.stringify(out).slice(0, 20000), now(), runId, stepNo)

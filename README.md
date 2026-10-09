@@ -161,6 +161,19 @@ account once as its own login, then set the site's login to *Sign in with Google
 that account. The bot clicks the site's Google button, follows the popup, and fills your
 Google account on Google's own pages; MFA codes and phone prompts come back to you.
 
+**Environment variables.** Each bot has an **Env** tab: paste a `.env` file and every
+command it runs in its shell gets those variables. They're stored encrypted with the same
+key as saved passwords and passed to the shell per command, never written to the bot's
+disk, so an edit applies to the very next command. The bot is told the names, never the
+values, and anything secret-looking (a name with `TOKEN`, `KEY`, `SECRET`, `PASS`…, or a
+value 16+ characters long) is masked as `[$NAME]` in what its tools return.
+
+Add `GITHUB_TOKEN` (or `GH_TOKEN`) and the bot can work on GitHub: `git clone
+https://github.com/owner/repo` works for private repos with no token in the URL, through a
+git credential helper that only answers for github.com, and so does the `gh` CLI. Use a
+fine-grained token limited to the repos and permissions that bot needs, since the bot's
+shell can use it for anything that token allows.
+
 **Settings** also holds the default budget and limits, and which models do the work; any
 bot can override the model in its **Details**.
 

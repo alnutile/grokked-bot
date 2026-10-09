@@ -10,7 +10,7 @@
     "start": "node packages/daemon/src/index.ts",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
-    "test": "node packages/daemon/test/ws-replay.test.ts && node packages/daemon/test/vault.test.ts && node packages/daemon/test/triggers.test.ts && node container/shim/test/snapshot.test.js",
+    "test": "node packages/daemon/test/ws-replay.test.ts && node packages/daemon/test/vault.test.ts && node packages/daemon/test/env.test.ts && node packages/daemon/test/triggers.test.ts && node container/shim/test/snapshot.test.js",
     "eval": "node packages/daemon/bin/eval.ts",
     "eval:report": "node packages/daemon/bin/eval-report.ts"
   },

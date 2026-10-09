@@ -2,6 +2,7 @@ import * as z from 'zod'
 import type { ToolDef } from '../model/openrouter.ts'
 import type { BotRuntime } from '../runtime/container.ts'
 import type { Db } from '../db/index.ts'
+import { botEnv } from '../env.ts'
 import { hostMatches, vault } from '../vault.ts'
 
 export type Risk = 'low' | 'medium' | 'high'
@@ -165,7 +166,10 @@ export const TOOLS: Tool[] = [
       timeout_s: z.number().default(60),
       cwd: z.string().default('/data/work'),
     }),
-    risk: 'medium', approval: 'never', replaySafe: false, run: passthrough('run_bash'),
+    risk: 'medium', approval: 'never', replaySafe: false,
+    // The bot's variables ride along on each call rather than living in the
+    // container, so an edit in the app applies to the very next command.
+    run: (args: any, ctx: ToolCtx) => ctx.runtime.act('run_bash', { ...args, env: botEnv.forShell(ctx.db, ctx.botId) }),
   },
   {
     name: 'write_file',

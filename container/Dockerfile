@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tint2 xterm pcmanfm \
       x11-utils x11-xserver-utils dbus-x11 \
       supervisor tini ffmpeg \
+      git gh jq \
       fonts-liberation fonts-dejavu-core fonts-noto-color-emoji fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
