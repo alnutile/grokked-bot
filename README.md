@@ -1,6 +1,6 @@
 # Grokked Bot
 
-**An open-source AI teammate that runs on your own Linux box.** Powered by
+**An open-source AI teammate that runs on your own computer, Mac or Linux.** Powered by
 [OpenRouter](https://openrouter.ai), so you pick the model. Inspired by Grok Bot and
 Claude Cowork — the difference is that the "computer" your agent works on is a container
 on hardware you already own, not a cloud VM you rent.
@@ -15,6 +15,35 @@ Above: asked for the top 10 spenders of 2024 on `fec.gov`, the bot opened the pa
 the table and answered in three steps for about five cents — and said which view it had
 read, so you know what to ask for next. On the right is its live screen, with a human
 holding control.
+
+## Get started
+
+You need three things, and the app walks you through all of them:
+
+- **Docker** running ([Docker Desktop](https://www.docker.com/products/docker-desktop/)
+  or OrbStack on a Mac, [Docker Engine](https://docs.docker.com/engine/install/) on Linux).
+  Each bot's computer is a container.
+- **An [OpenRouter](https://openrouter.ai/keys) key** with a few dollars of credit. A
+  typical task costs cents.
+- About **5 GB** of disk for the bot's computer, downloaded once.
+
+Then pick how you want to run it:
+
+| You have | Do this |
+|---|---|
+| A Mac (Apple Silicon or Intel) | [Download the app](#on-a-mac), drag it to Applications, open it |
+| Ubuntu / Debian 24.04+ or another Linux | [Install the .deb or AppImage](#on-linux-the-app) |
+| A Linux box you want bots on 24/7, or you want to hack on it | [Run from source](#quick-start-linux-from-source) as a background service |
+
+Once it's open, [your first task](#your-first-task) takes about a minute: click **+**,
+say what the bot is for, and send it a message.
+
+**Contents:** [What it can do](#what-it-can-do) · [Mac](#on-a-mac) ·
+[Linux app](#on-linux-the-app) · [From source](#quick-start-linux-from-source) ·
+[First task](#your-first-task) · [Troubleshooting](#troubleshooting) ·
+[Webhooks and schedules](#webhooks-and-schedules) · [Configuration](#configuration) ·
+[How it works](#how-it-works) · [API and CLI](#without-the-gui) · [Safety](#safety) ·
+[Contributing](#contributing)
 
 ## What it can do
 
@@ -76,13 +105,6 @@ the app isn't notarized yet: open **System Settings → Privacy & Security** and
 The app ships its own Node and runs the daemon itself. Two differences from Linux:
 **bots stop when you quit the app**, and on Apple Silicon the bot's Chrome runs under
 Rosetta, so it's a bit slower.
-
-**Cutting a release:** merge a change that bumps the version (see `CLAUDE.md`), or push a
-tag (`git tag v0.2.0 && git push origin v0.2.0`). The `release` workflow
-stamps the version into the app, builds and smoke-tests both Macs, pushes the bot
-computer image to `ghcr.io/alnutile/grokked-computer`, and opens a draft release with
-`.github/release-notes.md` as its notes. Publish it from the Releases page. For a local
-build on a Mac: `scripts/build-mac.sh`.
 
 ## On Linux, the app
 
@@ -460,12 +482,28 @@ cost and time per task, flags anything that regressed since the last run on that
 and saves the results to `~/.local/share/grokked/evals/`. The tasks and their checks live
 in `packages/daemon/evals/tasks.ts`; the local test pages in `evals/fixtures/`.
 
-## Tests
+## Contributing
 
 ```bash
-pnpm test
-pnpm typecheck
+pnpm install
+pnpm test                                 # unit tests
+pnpm typecheck                            # daemon and protocol
+(cd apps/desktop && pnpm exec tsc --noEmit)   # the desktop app
 ```
+
+Every pull request and every push to main runs the same checks in GitHub Actions, plus a
+build of the bot computer image (`.github/workflows/ci.yml`).
+
+**Releases** come from main. Merge a change that bumps the version (the files are listed
+in `CLAUDE.md`) together with a "What's new" section in `.github/release-notes.md`, and
+the `release` workflow builds the Mac dmgs (Apple Silicon and Intel), the Linux .deb and
+AppImage, and the bot computer image on `ghcr.io/alnutile/grokked-computer`. It then tags
+`vX.Y.Z` and opens a draft release; publish it from the Releases page. To retry a failed
+release, run the `release` workflow by hand on main. A local Mac build is
+`scripts/build-mac.sh`.
+
+`CLAUDE.md` has the working rules for AI agents on this repo, including keeping the
+[What it can do](#what-it-can-do) list current with every change.
 
 ## Name
 
