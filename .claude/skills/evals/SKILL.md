@@ -1,6 +1,6 @@
 ---
 name: evals
-description: Run, read and extend Grokked Bot's eval suite — ten everyday web tasks (FEC, Wikipedia, Hacker News, Reddit, Indeed, saved logins, Google SSO, a job form with upload) graded automatically against the live stack. Use when asked to run the evals, check a build, compare models or their cost, see whether a change made the bot better or worse, or add a new eval task.
+description: Run, read and extend Grokked Bot's eval suite — everyday tasks (FEC, Wikipedia, Hacker News, Reddit, Indeed, saved logins, Google SSO, HTTP sign-in, a job form with upload, a coding task) graded automatically against the live stack. Use when asked to run the evals, check a build, compare models or their cost, see whether a change made the bot better or worse, or add a new eval task.
 ---
 
 # Evals
@@ -36,7 +36,9 @@ Before running:
    computer.
 2. **If the shim or daemon changed,** say so and ask before
    `docker build -t grokked/computer:0.1 container` + `systemctl --user restart grokked`;
-   until then, the suite tests whatever the running daemon has loaded.
+   until then, the suite tests whatever the running daemon has loaded. Run the suite
+   against the **test instance** (`set -a; . scripts/dev-instance.env; set +a` first),
+   never against the installed app.
 3. **Mind the cost.** A full run is ~$1 on gpt-5.6-sol or grok-4.6. Expensive models
    (anything Fable- or Opus-class) cost several times that — say the estimate and get a
    yes before running one. Check live prices with

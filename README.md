@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="docs/brand/grokked-bot-logo-tagline.png" alt="Grokked Bot: Your Open Source Bot Harness" width="380">
+</p>
+
 # Grokked Bot
 
-**An open-source AI teammate that runs on your own computer, Mac or Linux.** Powered by
+**Your open-source bot harness: an AI teammate that runs on your own computer, Mac or Linux.** Powered by
 [OpenRouter](https://openrouter.ai), so you pick the model. Inspired by Grok Bot and
 Claude Cowork — the difference is that the "computer" your agent works on is a container
 on hardware you already own, not a cloud VM you rent.
