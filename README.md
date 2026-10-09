@@ -77,7 +77,8 @@ The app ships its own Node and runs the daemon itself. Two differences from Linu
 **bots stop when you quit the app**, and on Apple Silicon the bot's Chrome runs under
 Rosetta, so it's a bit slower.
 
-**Cutting a release:** `git tag v0.2.0 && git push origin v0.2.0`. The `release` workflow
+**Cutting a release:** merge a change that bumps the version (see `CLAUDE.md`), or push a
+tag (`git tag v0.2.0 && git push origin v0.2.0`). The `release` workflow
 stamps the version into the app, builds and smoke-tests both Macs, pushes the bot
 computer image to `ghcr.io/alnutile/grokked-computer`, and opens a draft release with
 `.github/release-notes.md` as its notes. Publish it from the Releases page. For a local

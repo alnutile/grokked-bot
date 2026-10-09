@@ -1,12 +1,12 @@
 # Builds the Mac .dmgs, the Linux .deb and AppImage, and the bot computer image
-# they pull on first run. Run it by hand from the Actions tab for a test build, or cut a
-# release:
+# they pull on first run. To cut a release, merge a PR that bumps the version in
+# apps/desktop/src-tauri/tauri.conf.json (and the other version files, see CLAUDE.md).
+# When main gets a version that has no tag yet, this builds and smoke-tests both Macs and
+# Linux, tags the commit vX.Y.Z and opens a *draft* GitHub release with the notes from
+# .github/release-notes.md. Publish it from the Releases page.
 #
-#   git tag v0.2.0 && git push origin v0.2.0
-#
-# That stamps 0.2.0 into the app, builds and smoke-tests both Macs and Linux, and opens a
-# *draft* GitHub release with the notes from .github/release-notes.md. Publish
-# it from the Releases page. File names never change, so
+# Pushing a tag by hand (git tag v0.2.0 && git push origin v0.2.0) still works, and
+# running it from the Actions tab is a test build with no release. File names never change, so
 #   https://github.com/<owner>/<repo>/releases/latest/download/Grokked-Bot-mac-apple-silicon.dmg
 # always serves the newest one.
 name: release
@@ -15,6 +15,8 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: ['apps/desktop/src-tauri/tauri.conf.json']
 
 permissions:
   contents: write
@@ -24,7 +26,36 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/grokked-computer
 
 jobs:
+  # Which version this is, and whether to build and release it. A push to main only
+  # releases a version that has no tag yet, so other edits to tauri.conf.json are a no-op.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"; BUILD=true; RELEASE=true
+          else
+            V="$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)"; BUILD=true; RELEASE=false
+            if [ "$GITHUB_EVENT_NAME" = push ]; then
+              if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then
+                echo "v$V is already tagged; nothing to release"; BUILD=false
+              else
+                RELEASE=true
+              fi
+            fi
+          fi
+          echo "version=$V build=$BUILD release=$RELEASE"
+          { echo "version=$V"; echo "build=$BUILD"; echo "release=$RELEASE"; } >> "$GITHUB_OUTPUT"
+
   computer-image:
+    needs: version
+    if: needs.version.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,8 +69,6 @@ jobs:
       # Silicon runs it under Rosetta.
       # The app asks for the image tagged with its own version, so every
       # release must publish that tag (an upgrade pulls it on first launch).
-      - id: v
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: container
@@ -48,11 +77,13 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:0.1
             ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ startsWith(github.ref, 'refs/tags/v') && format('{0}:{1}', env.IMAGE, steps.v.outputs.version) || '' }}
+            ${{ needs.version.outputs.release == 'true' && format('{0}:{1}', env.IMAGE, needs.version.outputs.version) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   mac-app:
+    needs: version
+    if: needs.version.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -126,6 +157,8 @@ jobs:
           path: out/*.dmg
 
   linux-app:
+    needs: version
+    if: needs.version.outputs.build == 'true'
     # 24.04's glibc: the AppImage runs on Ubuntu 24.04 / Debian 13 and newer.
     runs-on: ubuntu-24.04
     steps:
@@ -190,8 +223,8 @@ jobs:
           path: out/*
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [mac-app, linux-app, computer-image]
+    if: needs.version.outputs.release == 'true'
+    needs: [version, mac-app, linux-app, computer-image]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -201,11 +234,19 @@ jobs:
           merge-multiple: true
           path: out
       - run: ls -la out
+      # A version merged to main gets its tag here. Tags pushed with GITHUB_TOKEN
+      # don't start workflows, so this doesn't run the release a second time.
+      - name: Tag the release
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          git tag "v${{ needs.version.outputs.version }}" "$GITHUB_SHA"
+          git push origin "v${{ needs.version.outputs.version }}"
       # A draft, so the notes get a human read before they're public.
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
-          name: Grokked Bot ${{ github.ref_name }}
+          tag_name: v${{ needs.version.outputs.version }}
+          name: Grokked Bot v${{ needs.version.outputs.version }}
           body_path: .github/release-notes.md
           generate_release_notes: true
           files: out/*
