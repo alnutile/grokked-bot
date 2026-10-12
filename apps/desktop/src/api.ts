@@ -93,6 +93,12 @@ export interface RemoteStatus {
 export interface EnvVar { key: string; value: string; secret: boolean }
 export interface BotEnv { vars: EnvVar[]; text: string; skipped: string[] }
 
+/** A response the human pinned to keep. */
+export interface Pin {
+  id: string; bot_id: string; thread_id: string | null; run_id: string | null
+  text: string; created_at: number; thread_title?: string | null
+}
+
 export interface BotFile { path: string; abs: string; size: number; mtime: number }
 /** A chat line rebuilt by the daemon from SQLite. */
 export interface ThreadEntry {
@@ -163,6 +169,11 @@ export const api = {
   updateBot: (id: string, patch: Partial<Pick<Bot, 'name' | 'description' | 'persona_md' | 'default_domains' | 'default_max_usd' | 'default_max_steps' | 'default_max_wall_s' | 'avatar' | 'worker_model'>>) =>
     req<{ bot: Bot }>(`/v1/bots/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.bot),
   threads: () => req<{ threads: ThreadSummary[] }>('/v1/threads').then((r) => r.threads),
+  pins: (threadId?: string) =>
+    req<{ pins: Pin[] }>(`/v1/pins${threadId ? `?thread_id=${threadId}` : ''}`).then((r) => r.pins),
+  pin: (p: { bot_id: string; thread_id?: string | null; run_id?: string | null; text: string }) =>
+    req<{ pin: Pin }>('/v1/pins', { method: 'POST', body: JSON.stringify(p) }).then((r) => r.pin),
+  unpin: (id: string) => req(`/v1/pins/${id}`, { method: 'DELETE' }),
   threadById: (id: string) =>
     req<{ thread: { id: string; bot_id: string; title: string | null }; entries: ThreadEntry[]; run: Run | null }>(`/v1/threads/${id}`),
   renameThread: (id: string, title: string) =>

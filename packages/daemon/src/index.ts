@@ -11,6 +11,7 @@ import { mountRuns, reclaimOrphanedRuns } from './http/runs.ts'
 import { mountBots } from './http/bots.ts'
 import { mountSettings } from './http/settings.ts'
 import { mountTriggers } from './http/triggers.ts'
+import { mountPins } from './http/pins.ts'
 import { createHooksApp } from './http/hooks.ts'
 import { drive } from './http/runs.ts'
 import { startScheduler } from './triggers.ts'
@@ -32,6 +33,7 @@ mountBots(app, db)
 mountSettings(app, db)
 mountRuns(app, db, bus)
 mountTriggers(app, db, bus)
+mountPins(app, db)
 mountSystem(app)
 reclaimOrphanedRuns(db, bus)
 backfillTitles(db, bus)
