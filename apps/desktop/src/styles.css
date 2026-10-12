@@ -354,3 +354,32 @@ button { font: inherit; }
 .setup h1 { text-align: center; }
 .setup-intro { text-align: center; line-height: 1.55; font-size: 13.5px; }
 .steps li p.why { color: var(--text); opacity: .8; }
+
+/* ---------- copy a response ---------- */
+.bubble-foot { display: flex; justify-content: flex-end; gap: 2px; margin-top: 6px; }
+.ask-actions .bubble-foot { margin: 0 0 0 auto; }
+.copy-btn { background: none; border: 1px solid transparent; border-radius: 6px; color: var(--dim);
+            font-size: 11.5px; padding: 2px 7px; cursor: pointer; white-space: nowrap; }
+.copy-btn:hover { color: var(--text); border-color: var(--line); background: rgba(255, 255, 255, .04); }
+/* In-progress messages: only on hover, so a long run isn't a column of buttons. */
+.bubble-foot-quiet { height: 0; margin: 0; overflow: visible; opacity: 0; transition: opacity .12s; }
+.bubble:hover .bubble-foot-quiet { opacity: 1; height: auto; margin-top: 6px; }
+.pin-on { color: var(--warn); }
+.pinned-btn { display: flex; align-items: center; gap: 7px; background: none; border: 0; color: var(--text);
+              text-align: left; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 12.5px; }
+.pinned-btn:hover { background: var(--panel-2); }
+.pin-count { margin-left: auto; font-size: 11px; color: var(--dim); background: var(--panel-2);
+             border: 1px solid var(--line); border-radius: 10px; padding: 0 7px; }
+.pinned { width: min(760px, 100%); height: min(680px, 100%); background: var(--panel); border: 1px solid var(--line);
+          border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+.pinned-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.pinned-head .icon-btn { margin-left: auto; }
+.pinned-list { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+.pin-card { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); padding: 11px 13px;
+            display: flex; flex-direction: column; gap: 8px; }
+.pin-meta { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.pin-meta .field-hint { margin-left: auto; }
+.pin-text { font-size: 13px; line-height: 1.5; white-space: pre-wrap; cursor: pointer;
+            display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.pin-text-open { display: block; }
+.pin-actions { display: flex; gap: 2px; justify-content: flex-end; }

@@ -82,6 +82,8 @@ Everything below works today. Details are further down.
 
 **Conversations**
 - Real follow-ups ("now do 2022"), automatic titles you can rename, kept across restarts.
+- **Copy** any answer to your clipboard, or **Pin** it to keep it in **Pinned results** (sidebar),
+  linked back to its conversation.
 - Per-message overrides of the allowed sites and spending cap (the **+** in the composer).
 - The bot stops and asks when it needs you (login wall, CAPTCHA, a question); reply or take over.
 

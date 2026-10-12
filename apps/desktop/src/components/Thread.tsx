@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { api, subscribe, type Bot, type Frame, type Run } from '../api.ts'
 import { Avatar } from './Avatar.tsx'
 
@@ -41,6 +42,25 @@ export function Thread({ bot, threadId, frames, onThreadCreated, onNewConversati
   const [budget, setBudget] = useState('')
   const [sending, setSending] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  // Pinned responses in this conversation, by their text -> pin id.
+  const [pins, setPins] = useState<Map<string, string>>(new Map())
+  useEffect(() => {
+    if (!tid) { setPins(new Map()); return }
+    void api.pins(tid).then((ps) => setPins(new Map(ps.map((p) => [p.text, p.id])))).catch(() => {})
+  }, [tid])
+  const togglePin = async (text: string) => {
+    const id = pins.get(text)
+    try {
+      if (id) {
+        await api.unpin(id)
+        setPins((m) => { const n = new Map(m); n.delete(text); return n })
+      } else {
+        const p = await api.pin({ bot_id: bot.id, thread_id: tid, run_id: run?.id ?? null, text })
+        setPins((m) => new Map(m).set(text, p.id))
+      }
+      window.dispatchEvent(new Event('grokked:pins'))
+    } catch (e) { setEntries((x) => [...x, { kind: 'error', text: `Couldn't pin: ${(e as Error).message}` }]) }
+  }
   // Frames already reflected in `entries`; a loaded transcript covers everything so far.
   const seenSeq = useRef(0)
   const lastSeq = () => frames.length ? frames[frames.length - 1]!.seq : 0
@@ -169,7 +189,7 @@ export function Thread({ bot, threadId, frames, onThreadCreated, onNewConversati
             </p>
           </div>
         )}
-        {entries.map((e, i) => <Bubble key={i} e={e} />)}
+        {entries.map((e, i) => <Bubble key={i} e={e} pinned={pins.has(e.text)} onPin={() => togglePin(e.text)} />)}
         {live && <div className="working"><span className="dot" />working…</div>}
         {run?.state === 'paused_budget' && (
           <div className="bubble capped">
@@ -224,10 +244,29 @@ export function Thread({ bot, threadId, frames, onThreadCreated, onNewConversati
   )
 }
 
-function Bubble({ e }: { e: Entry }) {
+/** Copy a response as plain text. The Tauri plugin works in the packaged app;
+ *  the navigator fallback covers the UI running in a plain browser. */
+export async function copyText(text: string): Promise<void> {
+  try { await writeText(text) } catch { await navigator.clipboard.writeText(text).catch(() => {}) }
+}
+
+/** Copy and Pin, at the foot of a response. */
+function ResponseActions({ text, quiet, pinned, onPin }: { text: string; quiet?: boolean; pinned: boolean; onPin: () => void }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => { await copyText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+  return (
+    <div className={`bubble-foot ${quiet && !copied && !pinned ? 'bubble-foot-quiet' : ''}`}>
+      <button className="copy-btn" onClick={copy} title="Copy to clipboard">{copied ? '✓ Copied' : '⧉ Copy'}</button>
+      <button className={`copy-btn ${pinned ? 'pin-on' : ''}`} onClick={onPin}
+        title={pinned ? 'Unpin' : 'Pin it: keep it in Pinned results'}>{pinned ? '📌 Pinned' : '📌 Pin'}</button>
+    </div>
+  )
+}
+
+function Bubble({ e, pinned, onPin }: { e: Entry; pinned: boolean; onPin: () => void }) {
   if (e.kind === 'goal') return <div className="bubble you">{e.text}</div>
-  if (e.kind === 'say') return <div className="bubble bot">{e.text}</div>
-  if (e.kind === 'done') return <div className="bubble done"><b>Done</b><div>{e.text}</div></div>
+  if (e.kind === 'say') return <div className="bubble bot">{e.text}<ResponseActions text={e.text} quiet pinned={pinned} onPin={onPin} /></div>
+  if (e.kind === 'done') return <div className="bubble done"><b>Done</b><div>{e.text}</div><ResponseActions text={e.text} pinned={pinned} onPin={onPin} /></div>
   if (e.kind === 'error') return <div className="bubble err">{e.text}</div>
   if (e.kind === 'ask') {
     return (
@@ -239,6 +278,7 @@ function Bubble({ e }: { e: Entry }) {
           <button className="btn btn-warn" onClick={() => window.dispatchEvent(new Event('grokked:takeover'))}>
             Take over the screen
           </button>
+          <ResponseActions text={e.text} pinned={pinned} onPin={onPin} />
         </div>
       </div>
     )

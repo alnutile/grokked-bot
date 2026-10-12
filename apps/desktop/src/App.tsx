@@ -5,6 +5,7 @@ import { Thread } from './components/Thread.tsx'
 import { BotPanel } from './components/BotPanel.tsx'
 import { Avatar } from './components/Avatar.tsx'
 import { Settings } from './components/Settings.tsx'
+import { Pinned } from './components/Pinned.tsx'
 import { Setup, setupDone } from './components/Setup.tsx'
 import { Mascot } from './components/Mascot.tsx'
 
@@ -19,6 +20,14 @@ export default function App() {
   const [threads, setThreads] = useState<ThreadSummary[]>([])
   const [panelTab, setPanelTab] = useState<'details' | 'computer'>('computer')
   const [showSettings, setShowSettings] = useState(false)
+  const [showPinned, setShowPinned] = useState(false)
+  const [pinCount, setPinCount] = useState(0)
+  useEffect(() => {
+    const load = () => api.pins().then((ps) => setPinCount(ps.length)).catch(() => {})
+    void load()
+    window.addEventListener('grokked:pins', load)
+    return () => window.removeEventListener('grokked:pins', load)
+  }, [])
   const [frames, setFrames] = useState<Frame[]>([])
   const [conn, setConn] = useState<'up' | 'down'>('down')
   const [boot, setBoot] = useState<string | null>('Starting up…')
@@ -170,6 +179,10 @@ export default function App() {
           ))}
         </div>
 
+        <button className="pinned-btn" onClick={() => setShowPinned(true)} title="Responses you pinned">
+          📌 Pinned results{pinCount ? <span className="pin-count">{pinCount}</span> : null}
+        </button>
+
         <div className="conv-list">
           {threads.length === 0 && <p className="dim conv-empty">Conversations show up here.</p>}
           {threads.map((t) => {
@@ -215,6 +228,10 @@ export default function App() {
           </>
         : <div className="thread empty-thread"><p>Create a bot with + to get started.</p></div>}
       {showSettings && <Settings bots={bots} onClose={() => setShowSettings(false)} />}
+      {showPinned && (
+        <Pinned bots={bots} onClose={() => setShowPinned(false)}
+          onOpen={(botId, tid) => { setActive(botId); setThreadId(tid); setViewKey((k) => k + 1) }} />
+      )}
     </div>
   )
 }

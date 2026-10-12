@@ -6,6 +6,10 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **Copy and pin a bot's answer.** Every response has a **Copy** button, so you can paste
+  an answer anywhere without selecting text, and a **Pin** button that saves it to
+  **Pinned results** in the sidebar: everything you pinned, newest first, each with a
+  link back to the conversation it came from.
 - **Bots that can code.** Hand a bot a repo and it clones it, installs the language the
   project needs, reads and edits the code, runs the tests and commits. With a GitHub token
   it pushes a branch, opens a pull request, waits on CI and fixes what fails. Languages it
