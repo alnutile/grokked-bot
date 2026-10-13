@@ -6,9 +6,10 @@ import { ComputerPanel } from './ComputerPanel.tsx'
 import { ModelPicker } from './Settings.tsx'
 import { Triggers } from './Triggers.tsx'
 import { Ssh } from './Ssh.tsx'
+import { Slack } from './Slack.tsx'
 
-type Tab = 'details' | 'env' | 'ssh' | 'triggers' | 'media' | 'computer'
-const TAB_LABEL: Record<Tab, string> = { details: 'Details', env: 'Env', ssh: 'SSH', triggers: 'Triggers', media: 'Media', computer: 'Computer' }
+type Tab = 'details' | 'env' | 'ssh' | 'slack' | 'triggers' | 'media' | 'computer'
+const TAB_LABEL: Record<Tab, string> = { details: 'Details', env: 'Env', ssh: 'SSH', slack: 'Slack', triggers: 'Triggers', media: 'Media', computer: 'Computer' }
 
 /** The bot itself: who it is, what it has made, and its live computer. */
 export function BotPanel({ bot, initialTab = 'computer', onChange, onOpenThread }: {
@@ -35,7 +36,7 @@ export function BotPanel({ bot, initialTab = 'computer', onChange, onOpenThread 
         <div className="profile-name">{bot.name}</div>
         <div className="profile-desc">{bot.description || <span className="dim">No description yet</span>}</div>
         <div className="tabs">
-          {(['details', 'env', 'ssh', 'triggers', 'media', 'computer'] as const).map((t) => (
+          {(['details', 'env', 'ssh', 'slack', 'triggers', 'media', 'computer'] as const).map((t) => (
             <button key={t} className={`tab ${tab === t ? 'tab-on' : ''}`} onClick={() => setTab(t)}
               title={t === 'env' ? 'Environment variables' : t === 'ssh' ? 'SSH key and servers' : undefined}>
               {TAB_LABEL[t]}
@@ -47,6 +48,7 @@ export function BotPanel({ bot, initialTab = 'computer', onChange, onOpenThread 
         {tab === 'details' && <Details bot={bot} onChange={onChange} />}
         {tab === 'env' && <Env bot={bot} />}
         {tab === 'ssh' && <Ssh bot={bot} />}
+        {tab === 'slack' && <Slack bot={bot} />}
         {tab === 'triggers' && <Triggers bot={bot} onOpenThread={onOpenThread} />}
         {tab === 'media' && <Media bot={bot} />}
         {tab === 'computer' && (

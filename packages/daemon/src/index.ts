@@ -12,8 +12,10 @@ import { mountBots } from './http/bots.ts'
 import { mountSettings } from './http/settings.ts'
 import { mountTriggers } from './http/triggers.ts'
 import { mountPins } from './http/pins.ts'
+import { mountSlack } from './http/slack.ts'
+import { slack } from './slack.ts'
 import { createHooksApp } from './http/hooks.ts'
-import { drive } from './http/runs.ts'
+import { drive, sendToBot } from './http/runs.ts'
 import { startScheduler } from './triggers.ts'
 import { backfillTitles } from './agent/titles.ts'
 import { mountSystem } from './http/system.ts'
@@ -34,6 +36,7 @@ mountSettings(app, db)
 mountRuns(app, db, bus)
 mountTriggers(app, db, bus)
 mountPins(app, db)
+mountSlack(app, db)
 mountSystem(app)
 reclaimOrphanedRuns(db, bus)
 backfillTitles(db, bus)
@@ -53,6 +56,8 @@ const hooksServer = serve({ fetch: createHooksApp(db, bus).fetch, hostname: HOOK
   log.info({ host: HOOKS_HOST, port: info.port }, 'webhook listener up')
 })
 const stopScheduler = startScheduler(db, bus, (botId, runId) => drive(db, bus, botId, runId))
+// Bots with Slack hold a Socket Mode connection out to Slack: no public URL needed.
+slack.startAll(db, bus, (input) => sendToBot(db, bus, input))
 
 // Retention sweep. Clients asking for a `since` older than this get
 // hello{dropped:true} and do a full refetch instead of silently missing frames.
@@ -92,6 +97,7 @@ function shutdown(signal: string): void {
   log.info({ signal }, 'shutting down')
   clearInterval(prune)
   stopScheduler()
+  slack.stopAll()
   hooksServer.close()
   wss.close()
   server.close(() => {

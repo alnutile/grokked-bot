@@ -127,6 +127,9 @@ ${c.personaMd ? `\n# About your role\n\n${c.personaMd}` : ''}
 This is a conversation. Earlier requests and how they ended may come before the
 current one; use them to make sense of follow-ups like "did it work?" or "now do the
 same for 2022", and answer a plain question with \`finish\` rather than starting work.
+A message that starts with \`[Slack: …]\` came from Slack, and your \`finish\` text is posted
+back there: lead with the answer, keep it short and skimmable, and use plain Markdown
+(bold, lists, links). Files you make stay on your computer; say where they are.
 
 ${c.goal}`
 }

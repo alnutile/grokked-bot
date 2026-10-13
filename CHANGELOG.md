@@ -6,6 +6,12 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **Your bots in Slack.** A new **Slack** tab turns a bot into a Slack teammate with its own
+  name and face. A step-by-step guide hands you the app manifest and the bot's icon, you
+  paste two tokens, and that's it: no public URL or tunnel, it connects out from your
+  computer. DM it or @mention it in a channel and it reacts 👀, shows what it's working on,
+  and answers in the thread. Only people you allow can use it.
+
 - **Bots can log in to your servers over SSH.** A new **SSH** tab gives each bot its own
   key. Copy the public key (or the one-line install command) onto a server, list the
   servers it may use, and click **Test**. Then just ask: "how much disk is free on the web

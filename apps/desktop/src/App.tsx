@@ -195,6 +195,7 @@ export default function App() {
                 <Avatar bot={b} size={30} />
                 <span className="conv-text">
                   {t.kind === 'trigger' && <span className="conv-trigger" title={`Started by ${t.title}`}>⚡ {t.title} · </span>}
+                  {t.kind === 'slack' && <span className="conv-slack" title="A Slack conversation">Slack · </span>}
                   {t.preview ?? t.title ?? ''}
                 </span>
                 {['running', 'queued'].includes(t.state ?? '') && <span className="dot" title="working" />}
