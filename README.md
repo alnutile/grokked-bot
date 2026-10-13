@@ -66,6 +66,9 @@ Everything below works today. Details are further down.
   and its look.
 - **Env**: paste a `.env` file; every shell command gets those variables, values hidden
   from the model. A `GITHUB_TOKEN` lets it clone private repos and use `gh`.
+- **Slack**: put a bot in Slack as its own teammate (its name, its face). DM it or
+  @mention it; it reacts 👀, shows what it's doing and answers in the thread. Guided
+  setup with a ready manifest; no public URL needed.
 - **SSH**: the bot's own SSH key. Add its public key to a server's `authorized_keys`, list
   the servers it may use, click **Test**, and it can `ssh`, `scp` and `rsync` there.
 - **Triggers**: webhooks (bearer token, optional wait-for-answer) and cron schedules, each
@@ -267,6 +270,22 @@ key is stored encrypted and lives only in an `ssh-agent` inside the bot's comput
 printed. Connections are non-interactive (a server that asks for a password fails at
 once), new servers' host keys are remembered on first connect, and **Replace or remove
 key** makes the old key stop working everywhere.
+
+**Slack.** Each bot has a **Slack** tab that walks you through giving it its own Slack
+app in about five minutes: copy the manifest (pre-filled with the bot's name, description
+and colour), create the app from it on api.slack.com, save the bot's face as the app icon,
+make an App-Level Token (`connections:write`), install the app, and paste the two tokens
+(`xoxb-` and `xapp-`, checked with Slack before they're saved, then stored encrypted). It
+connects over **Socket Mode**: your computer holds a connection out to Slack, so there's no
+public URL, tunnel or Funnel, and it works on any network while the app is running.
+
+People DM the bot, or `/invite` it to a channel and @mention it. It reacts 👀 straight
+away, posts "On it…", edits that message with the step it's on, and replaces it with the
+answer (✅). Replies in its thread carry on the same conversation without an @, and if it
+asks a question, your reply in the thread is the answer. Every Slack thread also shows up
+in the app's conversation list. Only the people on its list can use it: the first person
+to message it is added (that's you, during setup), and you can add others or open it to
+the whole workspace. Pause, update tokens or disconnect from the same tab.
 
 **Coding bots.** Ask a bot to work on a repo and it clones it into its computer, installs
 the runtime the project asks for (Node, Python, Go, Java, Bun and Deno through

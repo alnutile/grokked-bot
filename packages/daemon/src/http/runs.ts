@@ -41,80 +41,90 @@ export function drive(db: Db, bus: EventBus, botId: string, runId: string): void
   })()
 }
 
-export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
-  const currentThread = (botId: string) =>
-    (db.prepare(
-      `SELECT id FROM threads WHERE bot_id = ? AND kind = 'chat' ORDER BY created_at DESC LIMIT 1`,
-    ).get(botId) as { id: string } | undefined)?.id
+export interface SendInput {
+  bot_id: string; goal: string; allowed_domains?: string[]
+  max_steps?: number; max_usd?: number; thread_id?: string; new_thread?: boolean
+}
 
-  const latestRun = (threadId: string) =>
-    db.prepare('SELECT * FROM runs WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1')
-      .get(threadId) as (RunState & Record<string, unknown>) | undefined
-
-  /** Resume a run that was waiting on the human. The wait doesn't count against
-   *  its time limit: the clock restarts now, or replying after an hour away
-   *  would fail the run on the spot. */
-  const requeue = (runId: string, botId: string) => {
-    db.prepare("UPDATE runs SET state='queued', state_reason=NULL, started_at=? WHERE id=?").run(Date.now(), runId)
-    bus.emit({ topic: `run:${runId}`, type: 'run.state', run_id: runId, data: { run_id: runId, state: 'queued' } })
-    drive(db, bus, botId, runId)
+/**
+ * A message to a bot, in a conversation: `thread_id` names one, `new_thread`
+ * starts one, and neither continues the bot's latest. If the bot is waiting on
+ * the human, this is the answer and that run carries on; otherwise it starts a
+ * new run in the thread, which sees the earlier exchanges. Domains and budget
+ * fall back to the bot's defaults. The app and Slack both come through here.
+ */
+export function sendToBot(db: Db, bus: EventBus, body: SendInput):
+  { status: 200 | 201 | 404 | 409; body: Record<string, unknown> } {
+  const bot = getBot(db, body.bot_id)
+  if (!bot) return { status: 404, body: { error: 'no_such_bot', message: `no bot ${body.bot_id}` } }
+  if (body.thread_id) {
+    const t = db.prepare('SELECT bot_id FROM threads WHERE id = ?').get(body.thread_id) as { bot_id: string } | undefined
+    if (t?.bot_id !== body.bot_id) return { status: 404, body: { error: 'no_such_thread' } }
   }
+  const threadId = body.thread_id
+    ?? (body.new_thread ? undefined : currentThread(db, body.bot_id))
+    ?? createThread(db, body.bot_id)
+  body.allowed_domains ??= bot.default_domains
+  body.max_usd ??= bot.default_max_usd ?? undefined
+  const last = latestRun(db, threadId)
+  if (last && ['queued', 'running'].includes(last.state)) {
+    return { status: 409, body: { error: 'busy', message: 'this bot is still working on your last message — stop it first' } }
+  }
+  // A bot has one computer: a run elsewhere (another conversation, a webhook,
+  // a schedule) would be driving the same browser.
+  if (!(last && waitingOnHuman(last)) && botBusy(db, body.bot_id)) {
+    return { status: 409, body: { error: 'busy', message: 'this bot is busy with another conversation or a trigger — wait for it or stop it' } }
+  }
+  if (last && waitingOnHuman(last)) {
+    addHumanReply(db, last.id, body.goal)
+    if (body.allowed_domains) {
+      db.prepare('UPDATE runs SET allowed_domains_json = ? WHERE id = ?')
+        .run(JSON.stringify(body.allowed_domains), last.id)
+    }
+    requeue(db, bus, last.id, body.bot_id)
+    return { status: 200, body: { run: db.prepare('SELECT * FROM runs WHERE id=?').get(last.id), resumed: true } }
+  }
+  const runId = createRun(db, { ...body, thread_id: threadId })
+  if (!last) autoTitle(db, bus, threadId, body.bot_id, body.goal)
+  bus.emit({ topic: `bot:${body.bot_id}`, type: 'run.created', run_id: runId,
+             bot_id: body.bot_id, data: { run_id: runId, goal: body.goal } })
+  drive(db, bus, body.bot_id, runId)
+  return { status: 201, body: { run: db.prepare('SELECT * FROM runs WHERE id=?').get(runId) } }
+}
+
+const currentThread = (db: Db, botId: string) =>
+  (db.prepare(
+    `SELECT id FROM threads WHERE bot_id = ? AND kind = 'chat' ORDER BY created_at DESC LIMIT 1`,
+  ).get(botId) as { id: string } | undefined)?.id
+
+const latestRun = (db: Db, threadId: string) =>
+  db.prepare('SELECT * FROM runs WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1')
+    .get(threadId) as (RunState & Record<string, unknown>) | undefined
+
+/** Resume a run that was waiting on the human. The wait doesn't count against
+ *  its time limit: the clock restarts now, or replying after an hour away
+ *  would fail the run on the spot. */
+function requeue(db: Db, bus: EventBus, runId: string, botId: string): void {
+  db.prepare("UPDATE runs SET state='queued', state_reason=NULL, started_at=? WHERE id=?").run(Date.now(), runId)
+  bus.emit({ topic: `run:${runId}`, type: 'run.state', run_id: runId, data: { run_id: runId, state: 'queued' } })
+  drive(db, bus, botId, runId)
+}
+
+export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
 
   const transcript = (threadId: string) => buildTranscript(db, threadId)
 
-  /** A message to a bot, in a conversation: `thread_id` names one, `new_thread`
-   *  starts one, and neither continues the bot's latest. If the bot is waiting on
-   *  the human, this is the answer and that run carries on; otherwise it starts a
-   *  new run in the thread, which sees the earlier exchanges. Domains and budget
-   *  fall back to the bot's defaults. */
   app.post('/v1/runs', async (c) => {
-    const body = await c.req.json<{
-      bot_id: string; goal: string; allowed_domains?: string[]
-      max_steps?: number; max_usd?: number; thread_id?: string; new_thread?: boolean
-    }>()
-    const bot = getBot(db, body.bot_id)
-    if (!bot) return c.json({ error: 'no_such_bot', message: `no bot ${body.bot_id}` }, 404)
-    if (body.thread_id) {
-      const t = db.prepare('SELECT bot_id FROM threads WHERE id = ?').get(body.thread_id) as { bot_id: string } | undefined
-      if (t?.bot_id !== body.bot_id) return c.json({ error: 'no_such_thread' }, 404)
-    }
-    const threadId = body.thread_id
-      ?? (body.new_thread ? undefined : currentThread(body.bot_id))
-      ?? createThread(db, body.bot_id)
-    body.allowed_domains ??= bot.default_domains
-    body.max_usd ??= bot.default_max_usd ?? undefined
-    const last = latestRun(threadId)
-    if (last && ['queued', 'running'].includes(last.state)) {
-      return c.json({ error: 'busy', message: 'this bot is still working on your last message — stop it first' }, 409)
-    }
-    // A bot has one computer: a run elsewhere (another conversation, a webhook,
-    // a schedule) would be driving the same browser.
-    if (!(last && waitingOnHuman(last)) && botBusy(db, body.bot_id)) {
-      return c.json({ error: 'busy', message: 'this bot is busy with another conversation or a trigger — wait for it or stop it' }, 409)
-    }
-    if (last && waitingOnHuman(last)) {
-      addHumanReply(db, last.id, body.goal)
-      if (body.allowed_domains) {
-        db.prepare('UPDATE runs SET allowed_domains_json = ? WHERE id = ?')
-          .run(JSON.stringify(body.allowed_domains), last.id)
-      }
-      requeue(last.id, body.bot_id)
-      return c.json({ run: db.prepare('SELECT * FROM runs WHERE id=?').get(last.id), resumed: true }, 200)
-    }
-    const runId = createRun(db, { ...body, thread_id: threadId })
-    if (!last) autoTitle(db, bus, threadId, body.bot_id, body.goal)
-    bus.emit({ topic: `bot:${body.bot_id}`, type: 'run.created', run_id: runId,
-               bot_id: body.bot_id, data: { run_id: runId, goal: body.goal } })
-    drive(db, bus, body.bot_id, runId)
-    return c.json({ run: db.prepare('SELECT * FROM runs WHERE id=?').get(runId) }, 201)
+    const out = sendToBot(db, bus, await c.req.json<SendInput>())
+    return c.json(out.body, out.status)
   })
 
   /** The bot's current conversation as chat entries, so the app can show it
    *  after a restart or a bot switch. */
   app.get('/v1/bots/:id/thread', (c) => {
-    const threadId = currentThread(c.req.param('id'))
+    const threadId = currentThread(db, c.req.param('id'))
     if (!threadId) return c.json({ thread_id: null, entries: [], run: null })
-    return c.json({ thread_id: threadId, entries: transcript(threadId), run: latestRun(threadId) ?? null })
+    return c.json({ thread_id: threadId, entries: transcript(threadId), run: latestRun(db, threadId) ?? null })
   })
 
   /** Every conversation, newest first, for the sidebar. The preview is how the
@@ -126,7 +136,7 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
                 WHERE r.thread_id = t.id ORDER BY r.created_at DESC LIMIT 1) AS preview,
               (SELECT r.state FROM runs r WHERE r.thread_id = t.id ORDER BY r.created_at DESC LIMIT 1) AS state
        FROM threads t
-       WHERE t.kind IN ('chat', 'trigger') AND EXISTS (SELECT 1 FROM runs r WHERE r.thread_id = t.id)
+       WHERE t.kind IN ('chat', 'trigger', 'slack') AND EXISTS (SELECT 1 FROM runs r WHERE r.thread_id = t.id)
        ORDER BY t.last_message_at DESC LIMIT 200`,
     ).all(),
   }))
@@ -135,7 +145,7 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     const id = c.req.param('id')
     const thread = db.prepare('SELECT id, bot_id, title, title_source FROM threads WHERE id = ?').get(id)
     if (!thread) return c.json({ error: 'not_found' }, 404)
-    return c.json({ thread, entries: transcript(id), run: latestRun(id) ?? null })
+    return c.json({ thread, entries: transcript(id), run: latestRun(db, id) ?? null })
   })
 
   /** Renaming makes the title the human's; the automatic one never overwrites it. */
@@ -237,12 +247,12 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     const botId = c.req.param('id')
     const rt = runtimeFor(botId) as LocalDockerRuntime
     const r = await fetch(await rt.shimUrl('/takeover'), { method: 'DELETE' })
-    const threadId = currentThread(botId)
-    const last = threadId ? latestRun(threadId) : undefined
+    const threadId = currentThread(db, botId)
+    const last = threadId ? latestRun(db, threadId) : undefined
     if (last && waitingOnHuman(last)) {
       addHumanReply(db, last.id,
         'I took over your screen and have handed it back. Look at where things are now and carry on.')
-      requeue(last.id, botId)
+      requeue(db, bus, last.id, botId)
     }
     return c.json({ ...(await r.json() as object), resumed: last && waitingOnHuman(last) ? last.id : null })
   })

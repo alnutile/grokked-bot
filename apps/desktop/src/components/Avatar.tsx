@@ -36,3 +36,35 @@ export function Avatar({ bot, size = 40 }: { bot: Pick<Bot, 'id' | 'avatar'>; si
     </svg>
   )
 }
+
+/** The bot's face as a square PNG (data URL), for a Slack app icon. */
+export async function avatarPng(bot: Pick<Bot, 'id' | 'avatar'>, size = 1024): Promise<string> {
+  const { shape, hue } = look(bot)
+  const s = shape % SHAPES.length
+  const y = EYES_Y[s]!
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64">
+    <rect width="64" height="64" fill="${avatarBackground(bot)}"/>
+    <g transform="translate(6.4 6.4) scale(0.8)">
+      <path d="${SHAPES[s]}" fill="hsl(${hue} 62% 52%)"/>
+      <ellipse cx="27" cy="${y}" rx="2.4" ry="3.6" fill="#141414"/>
+      <ellipse cx="37" cy="${y}" rx="2.4" ry="3.6" fill="#141414"/>
+    </g></svg>`
+  const img = new Image()
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+  await img.decode()
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  canvas.getContext('2d')!.drawImage(img, 0, 0, size, size)
+  return canvas.toDataURL('image/png')
+}
+
+/** A dark tint of the bot's colour, as #rrggbb: the icon's ground and the Slack app's colour. */
+export function avatarBackground(bot: Pick<Bot, 'id' | 'avatar'>): string {
+  const { hue } = look(bot)
+  const l = 0.2, sat = 0.35, a = sat * Math.min(l, 1 - l)
+  const f = (n: number) => {
+    const k = (n + hue / 30) % 12
+    return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0')
+  }
+  return `#${f(0)}${f(8)}${f(4)}`
+}

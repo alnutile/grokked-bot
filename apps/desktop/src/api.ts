@@ -93,6 +93,14 @@ export interface RemoteStatus {
 export interface EnvVar { key: string; value: string; secret: boolean }
 export interface SshHost { name: string; target: string; port?: number; note?: string }
 export interface BotSsh { public_key: string; fingerprint: string; created_at: number | null; hosts: SshHost[] }
+export interface SlackUser { id: string; name: string }
+export interface BotSlack {
+  manifest: string; configured: boolean; enabled: boolean
+  team_id: string | null; team_name: string | null; team_url: string | null
+  bot_user_id: string | null; bot_user_name: string | null; app_id: string | null
+  allow_all: boolean; allowed_users: SlackUser[]
+  status: { state: 'off' | 'connecting' | 'connected' | 'error'; detail?: string; since: number }
+}
 export interface BotEnv { vars: EnvVar[]; text: string; skipped: string[] }
 
 /** A response the human pinned to keep. */
@@ -192,6 +200,16 @@ export const api = {
     req<BotSsh>(`/v1/bots/${botId}/ssh/hosts`, { method: 'PUT', body: JSON.stringify({ hosts }) }),
   sshTest: (botId: string, host: SshHost) =>
     req<{ ok: boolean; message: string }>(`/v1/bots/${botId}/ssh/test`, { method: 'POST', body: JSON.stringify(host) }),
+  slack: (botId: string, color?: string) =>
+    req<BotSlack>(`/v1/bots/${botId}/slack${color ? `?color=${encodeURIComponent(color)}` : ''}`),
+  /** Checks both tokens with Slack, saves them encrypted, and connects. */
+  slackConnect: (botId: string, tokens: { bot_token?: string; app_token?: string }) =>
+    req<BotSlack>(`/v1/bots/${botId}/slack`, { method: 'PUT', body: JSON.stringify(tokens) }),
+  slackUpdate: (botId: string, patch: { enabled?: boolean; allow_all?: boolean; allowed_users?: SlackUser[] }) =>
+    req<BotSlack>(`/v1/bots/${botId}/slack`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  slackDisconnect: (botId: string) => req<BotSlack>(`/v1/bots/${botId}/slack`, { method: 'DELETE' }),
+  slackSaveIcon: (botId: string, png: string) =>
+    req<{ path: string }>(`/v1/bots/${botId}/slack/icon`, { method: 'POST', body: JSON.stringify({ png }) }),
   files: (botId: string) => req<{ root: string; files: BotFile[] }>(`/v1/bots/${botId}/files`),
   /** A text file's contents, read straight from the daemon. (Not via a blob:
    *  URL: the release CSP's connect-src has no blob:, so fetching one fails
