@@ -1,38 +1,16 @@
-## What's new in 0.4.1
+## What's new in 0.5.0
 
-- **Saving a bot's Env works.** In the 0.4.0 app, clicking Save on the Env tab said
-  "Couldn't save: Load failed". It saves now.
-
-### New in 0.4.0
-
-- **Copy and pin a bot's answer.** Every response has a **Copy** button, so you can paste
-  an answer anywhere without selecting text, and a **Pin** button that saves it to
-  **Pinned results** in the sidebar: everything you pinned, newest first, each with a
-  link back to the conversation it came from.
-- **Bots that can code.** Hand a bot a repo and it clones it, installs the language the
-  project needs, reads and edits the code, runs the tests and commits. With a GitHub token
-  it pushes a branch, opens a pull request, waits on CI and fixes what fails. Languages it
-  installs stay installed, even after an update.
-- **Each bot gets its own limits.** Set max steps and minutes per message in a bot's
-  Details, so a coding bot can work for hours while a shopping bot stays on a short leash.
-  The defaults are higher too: 150 steps and 3 hours.
-- **Limits that follow the model.** How much a bot reads and writes in one step now comes
-  from what OpenRouter says the model can handle, so a 1M-token model sees whole files and
-  test logs. Switch models and it adjusts on its own.
-- **A clearer README.** It opens with a Get started section: what you need, which
-  download fits your machine, and your first task in about a minute.
-- **Every change is checked before it lands.** Tests, type checks and a full build of
-  the bot's computer run on every pull request, and merging a version bump ships the
-  release (Mac, Linux and the bot computer image) on its own.
-- The bot's computer gets an update too. On first launch after upgrading, the app downloads
-  the new image; your bots, logins and conversations carry over.
-
-**Also new since 0.2.1** (0.3.0 shipped as a draft only):
-
-- **Environment variables per bot.** A new **Env** tab: paste a `.env` file and every
-  command the bot runs gets those variables, stored encrypted and never shown to the bot.
-- **Bots can work on GitHub.** Put a `GITHUB_TOKEN` in a bot's Env tab and it can clone
-  your private repos and use `gh`. The bot's computer now includes `git`, `gh` and `jq`.
+- **Your bots in Slack.** A new **Slack** tab turns a bot into a Slack teammate with its own
+  name and face. A step-by-step guide hands you the app manifest and the bot's icon, you
+  paste two tokens, and that's it: no public URL or tunnel, it connects out from your
+  computer. DM it or @mention it in a channel and it reacts 👀, shows what it's working on,
+  and answers in the thread. Only people you allow can use it.
+- **Bots can log in to your servers over SSH.** A new **SSH** tab gives each bot its own
+  key. Copy the public key (or the one-line install command) onto a server, list the
+  servers it may use, and click **Test**. Then just ask: "how much disk is free on the web
+  server?" The private key is stored encrypted and the bot can use it but never see it.
+- The bot's computer gets an update (SSH tools). On first launch after upgrading, the app
+  downloads the new image; your bots, logins and conversations carry over.
 
 ## Download for Mac
 
