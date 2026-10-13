@@ -40,12 +40,10 @@ export function Triggers({ bot, onOpenThread }: { bot: Bot; onOpenThread: (threa
 
   return (
     <div className="triggers">
-      <div className="media-head">
-        <span className="dim">What can start {bot.name} besides you</span>
-        <span className="row-gap">
-          <button className="btn btn-sm" onClick={() => setEditing('webhook')}>Add webhook</button>
-          <button className="btn btn-sm" onClick={() => setEditing('cron')}>Add schedule</button>
-        </span>
+      <span className="dim">What can start {bot.name} besides you</span>
+      <div className="row-gap">
+        <button className="btn btn-sm" onClick={() => setEditing('webhook')}>Add webhook</button>
+        <button className="btn btn-sm" onClick={() => setEditing('cron')}>Add schedule</button>
       </div>
       {err && <p className="hint err">{err}</p>}
       {list?.length === 0 && (
