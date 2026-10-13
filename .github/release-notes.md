@@ -1,14 +1,33 @@
-## What's new in 0.3.0
+## What's new in 0.4.0
+
+- **Copy and pin a bot's answer.** Every response has a **Copy** button, so you can paste
+  an answer anywhere without selecting text, and a **Pin** button that saves it to
+  **Pinned results** in the sidebar: everything you pinned, newest first, each with a
+  link back to the conversation it came from.
+- **Bots that can code.** Hand a bot a repo and it clones it, installs the language the
+  project needs, reads and edits the code, runs the tests and commits. With a GitHub token
+  it pushes a branch, opens a pull request, waits on CI and fixes what fails. Languages it
+  installs stay installed, even after an update.
+- **Each bot gets its own limits.** Set max steps and minutes per message in a bot's
+  Details, so a coding bot can work for hours while a shopping bot stays on a short leash.
+  The defaults are higher too: 150 steps and 3 hours.
+- **Limits that follow the model.** How much a bot reads and writes in one step now comes
+  from what OpenRouter says the model can handle, so a 1M-token model sees whole files and
+  test logs. Switch models and it adjusts on its own.
+- **A clearer README.** It opens with a Get started section: what you need, which
+  download fits your machine, and your first task in about a minute.
+- **Every change is checked before it lands.** Tests, type checks and a full build of
+  the bot's computer run on every pull request, and merging a version bump ships the
+  release (Mac, Linux and the bot computer image) on its own.
+- The bot's computer gets an update too. On first launch after upgrading, the app downloads
+  the new image; your bots, logins and conversations carry over.
+
+**Also new since 0.2.1** (0.3.0 shipped as a draft only):
 
 - **Environment variables per bot.** A new **Env** tab: paste a `.env` file and every
-  command the bot runs in its shell gets those variables. They're stored encrypted, the
-  bot is told their names but never their values, and secret-looking values are masked
-  in everything it sees.
-- **Bots can work on GitHub.** Put a `GITHUB_TOKEN` in a bot's Env tab and it can
-  `git clone` your private repos and use the `gh` command. The token never shows up in
-  the conversation. Use a fine-grained token limited to the repos that bot needs.
-- The bot's computer now includes `git`, `gh` and `jq`. On first launch after upgrading,
-  the app downloads the new bot computer image; your bots' site logins carry over.
+  command the bot runs gets those variables, stored encrypted and never shown to the bot.
+- **Bots can work on GitHub.** Put a `GITHUB_TOKEN` in a bot's Env tab and it can clone
+  your private repos and use `gh`. The bot's computer now includes `git`, `gh` and `jq`.
 
 ## Download for Mac
 

@@ -6,6 +6,8 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+## 0.4.0 (2026-10-13)
+
 - **Copy and pin a bot's answer.** Every response has a **Copy** button, so you can paste
   an answer anywhere without selecting text, and a **Pin** button that saves it to
   **Pinned results** in the sidebar: everything you pinned, newest first, each with a
