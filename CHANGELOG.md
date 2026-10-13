@@ -6,6 +6,8 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+## 0.5.0 (2026-10-13)
+
 - **Your bots in Slack.** A new **Slack** tab turns a bot into a Slack teammate with its own
   name and face. A step-by-step guide hands you the app manifest and the bot's icon, you
   paste two tokens, and that's it: no public URL or tunnel, it connects out from your
