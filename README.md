@@ -66,6 +66,8 @@ Everything below works today. Details are further down.
   and its look.
 - **Env**: paste a `.env` file; every shell command gets those variables, values hidden
   from the model. A `GITHUB_TOKEN` lets it clone private repos and use `gh`.
+- **SSH**: the bot's own SSH key. Add its public key to a server's `authorized_keys`, list
+  the servers it may use, click **Test**, and it can `ssh`, `scp` and `rsync` there.
 - **Triggers**: webhooks (bearer token, optional wait-for-answer) and cron schedules, each
   with its own conversation.
 - **Media**: everything it saved or downloaded, previewable, openable on your desktop.
@@ -254,6 +256,17 @@ https://github.com/owner/repo` works for private repos with no token in the URL,
 git credential helper that only answers for github.com, and so does the `gh` CLI. Use a
 fine-grained token limited to the repos and permissions that bot needs, since the bot's
 shell can use it for anything that token allows.
+
+**SSH.** Each bot has an **SSH** tab. **Create SSH key** makes it an ed25519 key of its
+own (so one bot can be let in, or shut out, without touching anyone else's access) and
+shows the public half with a ready-to-paste command that adds it to a server user's
+`~/.ssh/authorized_keys`. List the servers it may use (`deploy@web.example.com`, a port, a
+note like "read only") and **Test** checks each one from the bot's computer. The private
+key is stored encrypted and lives only in an `ssh-agent` inside the bot's computer, so
+`ssh`, `scp` and `rsync` work from its shell but the key is never on its disk and can't be
+printed. Connections are non-interactive (a server that asks for a password fails at
+once), new servers' host keys are remembered on first connect, and **Replace or remove
+key** makes the old key stop working everywhere.
 
 **Coding bots.** Ask a bot to work on a repo and it clones it into its computer, installs
 the runtime the project asks for (Node, Python, Go, Java, Bun and Deno through

@@ -11,6 +11,43 @@ const exec = promisify(execFile)
 const CDP = `http://127.0.0.1:${process.env.CDP_PORT || 9222}`
 const WORK_DIR = process.env.WORK_DIR || '/data/work'
 
+/**
+ * The bot's SSH key lives only in this ssh-agent: the daemon sends it with each
+ * run_bash, it is added over stdin, and the shell gets SSH_AUTH_SOCK. `ssh` and
+ * `scp` sign with it; nothing can read it back out. An empty key (removed in the
+ * app) unloads it, a different one (rotated) replaces it.
+ */
+const SSH_SOCK = '/run/grokked-ssh/agent.sock'
+const sshAgent = {
+  loaded: false,
+  current: '',
+  started: null,
+  start() {
+    this.started ??= (async () => {
+      await mkdir('/run/grokked-ssh', { recursive: true, mode: 0o700 })
+      await mkdir('/data/ssh', { recursive: true, mode: 0o700 })
+      spawn('ssh-agent', ['-D', '-a', SSH_SOCK], { stdio: 'ignore' }).on('exit', () => { this.started = null; this.loaded = false; this.current = '' })
+      for (let i = 0; i < 50; i++) { if (await stat(SSH_SOCK).then(() => true, () => false)) return; await new Promise((r) => setTimeout(r, 50)) }
+    })()
+    return this.started
+  },
+  async load(key) {
+    if (key === this.current) return
+    await this.start()
+    const add = (args, input) => new Promise((resolve, reject) => {
+      const p = spawn('ssh-add', args, { env: { ...process.env, SSH_AUTH_SOCK: SSH_SOCK }, stdio: ['pipe', 'ignore', 'ignore'] })
+      p.on('error', reject)
+      p.on('close', (c) => (c === 0 ? resolve() : reject(new Error(`ssh-add exited ${c}`))))
+      p.stdin.end(input ?? '')
+    })
+    await add(['-D']).catch(() => {})
+    this.loaded = false
+    this.current = ''
+    if (key) { await add(['-'], key); this.loaded = true }
+    this.current = key
+  },
+}
+
 const stringEnv = (env) => Object.fromEntries(
   Object.entries(env && typeof env === 'object' ? env : {}).filter(([, v]) => typeof v === 'string'),
 )
@@ -417,16 +454,18 @@ export class Session {
   // curl, python3, jq, ffmpeg, git and node are all already in the image, which
   // makes a whole class of jobs a one-liner instead of twenty clicks.
 
-  async run_bash({ command, timeout_s = 60, cwd = WORK_DIR, env = {} }) {
+  async run_bash({ command, timeout_s = 60, cwd = WORK_DIR, env = {}, ssh_key }) {
     if (typeof command !== 'string' || !command.trim()) {
       throw new Fail('bad_command', 'command must be a non-empty string')
     }
+    // undefined = an older daemon that doesn't send keys: leave the agent alone.
+    if (ssh_key !== undefined) await sshAgent.load(ssh_key).catch(() => { /* ssh just won't authenticate */ })
     const started = Date.now()
     return await new Promise((resolve) => {
       const child = spawn('/bin/bash', ['-lc', command], {
         cwd,
         // The bot's own variables from the app, on top of the computer's.
-        env: { ...process.env, ...stringEnv(env), TERM: 'dumb' },
+        env: { ...process.env, ...stringEnv(env), TERM: 'dumb', ...(sshAgent.loaded ? { SSH_AUTH_SOCK: SSH_SOCK } : {}) },
       })
       let out = '', err = '', killed = false
       const CAP = 200_000

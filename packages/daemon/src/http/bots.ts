@@ -4,6 +4,7 @@ import { extname, join, relative, resolve, sep } from 'node:path'
 import type { Hono } from 'hono'
 import { DATA_DIR } from '../config.ts'
 import type { Db } from '../db/index.ts'
+import { botSsh } from '../ssh.ts'
 import { botEnv, looksSecret, parseDotenv, toDotenv, type EnvVar } from '../env.ts'
 
 type BotRow = {
@@ -105,6 +106,31 @@ export function mountBots(app: Hono, db: Db): void {
     const parsed = typeof b.text === 'string' ? parseDotenv(b.text) : { vars: Array.isArray(b.vars) ? b.vars : [], skipped: [] }
     const saved = botEnv.set(db, id, parsed.vars)
     return c.json(envBody(saved.vars, [...parsed.skipped, ...saved.skipped]))
+  })
+
+  // ---- its SSH identity. Only the public half ever leaves the daemon.
+  const sshOr404 = (id: string) => botSsh.info(db, id)
+  app.get('/v1/bots/:id/ssh', (c) => {
+    const info = sshOr404(c.req.param('id'))
+    return info ? c.json(info) : c.json({ error: 'not_found' }, 404)
+  })
+  /** Makes the key, or a new one: the old one stops working on every server. */
+  app.post('/v1/bots/:id/ssh/key', (c) => {
+    const info = botSsh.rotate(db, c.req.param('id'))
+    return info ? c.json(info, 201) : c.json({ error: 'not_found' }, 404)
+  })
+  app.delete('/v1/bots/:id/ssh/key', (c) => {
+    const id = c.req.param('id')
+    if (!getBot(db, id)) return c.json({ error: 'not_found' }, 404)
+    botSsh.remove(db, id)
+    return c.json(botSsh.info(db, id))
+  })
+  app.put('/v1/bots/:id/ssh/hosts', async (c) => {
+    const id = c.req.param('id')
+    if (!getBot(db, id)) return c.json({ error: 'not_found' }, 404)
+    const b = await c.req.json<{ hosts?: unknown }>()
+    botSsh.setHosts(db, id, b.hosts)
+    return c.json(botSsh.info(db, id))
   })
 
   /** What the bot has made or downloaded, newest first. */

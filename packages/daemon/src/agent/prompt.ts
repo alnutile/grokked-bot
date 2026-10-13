@@ -7,6 +7,8 @@ export interface PromptCtx {
   workDir?: string
   /** Names of the bot's environment variables; the values never reach the model. */
   envKeys?: string[]
+  /** The bot's SSH identity and the servers the human listed, if it has a key. */
+  ssh?: { hosts: Array<{ name: string; target: string; port?: number; note?: string }> } | null
 }
 
 /**
@@ -90,7 +92,7 @@ which you can't see or click — you'll get \`http_auth_required\`; answer it wi
 \`browser_http_auth\`. Only ask the human when nothing is saved, or for MFA codes, phone
 prompts and CAPTCHAs.
 
-${envSection(c.envKeys ?? [])}**Take notes as you go.** Only the pages you looked at most recently stay in full view;
+${envSection(c.envKeys ?? [])}${sshSection(c.ssh)}**Take notes as you go.** Only the pages you looked at most recently stay in full view;
 older ones drop out to save tokens. Before you leave a page, write what you'll need from it
 (names, numbers, links) in your message. Never go back to a page just to re-read something
 you could have noted.
@@ -127,6 +129,20 @@ current one; use them to make sense of follow-ups like "did it work?" or "now do
 same for 2022", and answer a plain question with \`finish\` rather than starting work.
 
 ${c.goal}`
+}
+
+function sshSection(ssh: PromptCtx['ssh']): string {
+  if (!ssh) return ''
+  const hosts = ssh.hosts.map((h) =>
+    `- **${h.name}**: \`ssh ${h.port ? `-p ${h.port} ` : ''}${h.target}\`${h.note ? ` (${h.note})` : ''}`).join('\n')
+  return `**SSH.** You have your own SSH key, loaded in an agent, so \`ssh\`, \`scp\` and \`rsync\` from
+\`run_bash\` just work on servers that trust it. There is no key file and you can't read the key.
+${hosts ? `Servers the human set up for you:\n${hosts}\n` : ''}Connections are non-interactive: run one command
+per call (\`ssh host 'df -h'\`), never open an interactive session or anything that waits for input. If
+a server says "Permission denied (publickey)", it doesn't have your key yet: tell the human to add
+it from your SSH tab. Look before you change anything on a server, and only change what the task asks.
+
+`
 }
 
 function envSection(keys: string[]): string {

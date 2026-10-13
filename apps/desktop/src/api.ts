@@ -91,6 +91,8 @@ export interface RemoteStatus {
 
 /** `secret` = masked in the bot's output; the daemon decides, the UI just shows it. */
 export interface EnvVar { key: string; value: string; secret: boolean }
+export interface SshHost { name: string; target: string; port?: number; note?: string }
+export interface BotSsh { public_key: string; fingerprint: string; created_at: number | null; hosts: SshHost[] }
 export interface BotEnv { vars: EnvVar[]; text: string; skipped: string[] }
 
 /** A response the human pinned to keep. */
@@ -182,6 +184,14 @@ export const api = {
   /** Replaces the whole set with what a pasted .env file says. */
   saveEnv: (botId: string, text: string) =>
     req<BotEnv>(`/v1/bots/${botId}/env`, { method: 'PUT', body: JSON.stringify({ text }) }),
+  ssh: (botId: string) => req<BotSsh>(`/v1/bots/${botId}/ssh`),
+  /** Makes the bot's key, or replaces it (the old one stops working). */
+  sshCreateKey: (botId: string) => req<BotSsh>(`/v1/bots/${botId}/ssh/key`, { method: 'POST' }),
+  sshRemoveKey: (botId: string) => req<BotSsh>(`/v1/bots/${botId}/ssh/key`, { method: 'DELETE' }),
+  sshSaveHosts: (botId: string, hosts: SshHost[]) =>
+    req<BotSsh>(`/v1/bots/${botId}/ssh/hosts`, { method: 'PUT', body: JSON.stringify({ hosts }) }),
+  sshTest: (botId: string, host: SshHost) =>
+    req<{ ok: boolean; message: string }>(`/v1/bots/${botId}/ssh/test`, { method: 'POST', body: JSON.stringify(host) }),
   files: (botId: string) => req<{ root: string; files: BotFile[] }>(`/v1/bots/${botId}/files`),
   /** A text file's contents, read straight from the daemon. (Not via a blob:
    *  URL: the release CSP's connect-src has no blob:, so fetching one fails
