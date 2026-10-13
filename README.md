@@ -526,7 +526,7 @@ build of the bot computer image (`.github/workflows/ci.yml`).
 in `CLAUDE.md`) together with a "What's new" section in `.github/release-notes.md`, and
 the `release` workflow builds the Mac dmgs (Apple Silicon and Intel), the Linux .deb and
 AppImage, and the bot computer image on `ghcr.io/alnutile/grokked-computer`. It then tags
-`vX.Y.Z` and opens a draft release; publish it from the Releases page. To retry a failed
+`vX.Y.Z` and publishes the release as Latest, nothing to click. To retry a failed
 release, run the `release` workflow by hand on main. A local Mac build is
 `scripts/build-mac.sh`.
 

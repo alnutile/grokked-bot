@@ -16,8 +16,8 @@ What happens on main:
 - Every push to main runs CI again.
 - A push that changes the version in `apps/desktop/src-tauri/tauri.conf.json` to one with
   no `vX.Y.Z` tag yet runs `release.yml`: Mac dmgs (Apple Silicon, Intel), Linux .deb and
-  AppImage, the bot computer image on ghcr.io, the tag, and a **draft** release. The owner
-  publishes the draft from the Releases page.
+  AppImage, the bot computer image on ghcr.io, the tag, and a **published** release marked
+  Latest. Nobody needs to click anything.
 
 ## Cutting a release
 
