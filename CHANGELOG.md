@@ -6,6 +6,11 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+## 0.4.1 (2026-10-13)
+
+- **Saving a bot's Env works.** In the 0.4.0 app, clicking Save on the Env tab said
+  "Couldn't save: Load failed". It saves now.
+
 ## 0.4.0 (2026-10-13)
 
 - **Copy and pin a bot's answer.** Every response has a **Copy** button, so you can paste

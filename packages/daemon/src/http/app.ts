@@ -20,6 +20,10 @@ function safeEq(a: string, b: string): boolean {
   return ab.length === bb.length && timingSafeEqual(ab, bb)
 }
 
+/** Every method a /v1 route uses must be here, or the packaged app's request fails
+ *  its CORS preflight and WebKit reports only "Load failed". */
+export const CORS_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono()
 
@@ -30,7 +34,7 @@ export function createApp(deps: AppDeps): Hono {
   // the real request.
   app.use('/v1/*', cors({
     origin: (o) => (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o) ? o : null),
-    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowMethods: CORS_METHODS,
     allowHeaders: ['authorization', 'content-type'],
     maxAge: 600,
   }))

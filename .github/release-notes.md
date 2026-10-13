@@ -1,4 +1,9 @@
-## What's new in 0.4.0
+## What's new in 0.4.1
+
+- **Saving a bot's Env works.** In the 0.4.0 app, clicking Save on the Env tab said
+  "Couldn't save: Load failed". It saves now.
+
+### New in 0.4.0
 
 - **Copy and pin a bot's answer.** Every response has a **Copy** button, so you can paste
   an answer anywhere without selecting text, and a **Pin** button that saves it to
