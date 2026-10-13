@@ -11,7 +11,7 @@ const { Hono } = await import('hono')
 const dir = join(import.meta.dirname, '../src/http')
 const used = new Set<string>()
 for (const f of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
-  for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/app\.(get|post|put|patch|delete)\(\s*'\/v1\//g)) used.add(m[1].toUpperCase())
+  for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/app\.(get|post|put|patch|delete)\(\s*'\/v1\//g)) used.add(m[1]!.toUpperCase())
 }
 assert.ok(used.has('PUT'), 'found the routes')
 for (const m of used) assert.ok(CORS_METHODS.includes(m), `${m} is used by a /v1 route but not allowed by CORS`)
