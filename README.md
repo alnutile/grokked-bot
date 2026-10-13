@@ -306,6 +306,15 @@ with its password and a link that logs straight in; `./vnc.sh <bot-id>` opens th
 
 ## Troubleshooting
 
+Something not working? Run this in Terminal (Mac or Linux). It writes
+`grokked-diagnostics.txt` to your Desktop: app and Docker versions, your bots and their
+Slack status, recent runs and the last 300 log lines, with tokens and keys replaced by
+`[redacted]`. Skim it and send it to whoever is helping.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alnutile/grokked-bot/main/scripts/diagnostics.sh | bash
+```
+
 | Symptom | Fix |
 |---|---|
 | App says the daemon is offline | `systemctl --user status grokked`, then `journalctl --user -u grokked -n 50` |

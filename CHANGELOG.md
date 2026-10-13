@@ -6,6 +6,10 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **A one-line diagnostics report.** When something goes wrong, one Terminal command
+  writes a report to your Desktop (versions, Docker, your bots, Slack status, recent runs
+  and the log) with every token and key scrubbed out, ready to send to whoever is helping.
+
 ## 0.5.0 (2026-10-13)
 
 - **Your bots in Slack.** A new **Slack** tab turns a bot into a Slack teammate with its own
