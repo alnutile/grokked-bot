@@ -6,6 +6,11 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **Bots can log in to your servers over SSH.** A new **SSH** tab gives each bot its own
+  key. Copy the public key (or the one-line install command) onto a server, list the
+  servers it may use, and click **Test**. Then just ask: "how much disk is free on the web
+  server?" The private key is stored encrypted and the bot can use it but never see it.
+
 ## 0.4.1 (2026-10-13)
 
 - **Saving a bot's Env works.** In the 0.4.0 app, clicking Save on the Env tab said

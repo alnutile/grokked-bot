@@ -9,6 +9,7 @@ import { botBusy } from '../triggers.ts'
 import { LocalDockerRuntime, type BotRuntime } from '../runtime/container.ts'
 import { log } from '../log.ts'
 import { credits } from '../model/openrouter.ts'
+import { botSsh, cleanHosts } from '../ssh.ts'
 
 const runtimes = new Map<string, BotRuntime>()
 const runtimeFor = (botId: string): BotRuntime => {
@@ -268,6 +269,27 @@ export function mountRuns(app: Hono, db: Db, bus: EventBus): void {
     const rt = runtimeFor(c.req.param('id'))
     await rt.ensureUp()
     return c.json({ ok: true })
+  })
+
+  /** "Does this server let the bot in yet?" -- one `ssh <host> true` from its computer. */
+  app.post('/v1/bots/:id/ssh/test', async (c) => {
+    const id = c.req.param('id')
+    if (!getBot(db, id)) return c.json({ error: 'not_found' }, 404)
+    const [host] = cleanHosts([await c.req.json<unknown>().catch(() => ({}))])
+    if (!host) return c.json({ ok: false, message: 'Enter the server as user@host.' }, 400)
+    const key = botSsh.privateKey(db, id)
+    if (!key) return c.json({ ok: false, message: 'Make the bot a key first.' }, 400)
+    const rt = runtimeFor(id)
+    await rt.ensureUp()
+    const cmd = `ssh ${host.port ? `-p ${host.port} ` : ''}-o ConnectTimeout=10 '${host.target}' 'echo ok; hostname'`
+    const out = await rt.act('run_bash', { command: cmd, timeout_s: 25, cwd: '/data/work', env: {}, ssh_key: key }) as
+      { ok: boolean; stdout?: string; stderr?: string; error?: string; message?: string }
+    if (out.ok) return c.json({ ok: true, message: `Connected to ${(out.stdout ?? '').split('\n')[1]?.trim() || host.target}.` })
+    const err = (out.stderr ?? '').replace(/\r/g, '').split('\n').filter((l) => l && !l.startsWith('Warning: Permanently added')).pop()
+    const hint = /Permission denied/.test(out.stderr ?? '')
+      ? " The server doesn't have this bot's key yet: add the public key to the user's ~/.ssh/authorized_keys."
+      : ''
+    return c.json({ ok: false, message: `${err || out.message || out.error || 'Could not connect.'}${hint}` })
   })
 }
 

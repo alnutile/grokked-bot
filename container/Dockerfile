@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tint2 xterm pcmanfm \
       x11-utils x11-xserver-utils dbus-x11 \
       supervisor tini ffmpeg \
-      git gh jq curl ca-certificates \
+      git gh jq curl ca-certificates openssh-client rsync \
       fonts-liberation fonts-dejavu-core fonts-noto-color-emoji fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
@@ -55,6 +55,18 @@ ENV MISE_DATA_DIR=/data/tools/mise \
     PATH=/data/tools/mise/shims:/data/tools/bin:$PATH
 # run_bash is a login shell, and Ubuntu's /etc/profile resets root's PATH.
 RUN printf '%s\n' 'export PATH="/data/tools/mise/shims:/data/tools/bin:$PATH"' > /etc/profile.d/grokked-tools.sh
+
+# SSH as the bot: its key lives only in an ssh-agent the shim feeds (see
+# session.js), so there is no key file to cat. Known hosts persist on /data, and
+# BatchMode makes a server that wants a password fail at once instead of hanging.
+RUN mkdir -p /etc/ssh/ssh_config.d && printf '%s\n' \
+      'Host *' \
+      '  StrictHostKeyChecking accept-new' \
+      '  UserKnownHostsFile /data/ssh/known_hosts' \
+      '  BatchMode yes' \
+      '  ConnectTimeout 15' \
+      '  ServerAliveInterval 30' \
+      > /etc/ssh/ssh_config.d/grokked.conf
 
 WORKDIR /opt/shim
 COPY shim/package.json ./package.json

@@ -4,6 +4,7 @@ import * as z from 'zod'
 import type { Db } from '../db/index.ts'
 import type { EventBus } from '../events.ts'
 import { botEnv, redactEnv } from '../env.ts'
+import { botSsh, type SshHost } from '../ssh.ts'
 import { limitsFor, modelInfo } from '../model/catalog.ts'
 import { chat, ModelError, type ChatMessage, type ToolCall } from '../model/openrouter.ts'
 import { loadConfig } from '../config.ts'
@@ -164,6 +165,7 @@ function assembleMessages(db: Db, run: RunRow, botName: string, personaMd: strin
       allowedDomains: JSON.parse(run.allowed_domains_json) as string[],
       maxSteps: run.max_steps,
       envKeys: botEnv.keys(db, run.bot_id),
+      ssh: sshForPrompt(db, run.bot_id),
     }),
   }]
 
@@ -500,4 +502,10 @@ async function dispatchTool(
     return { done: true, state: 'sleeping', reason: 'a human took over mid-run' }
   }
   return { done: false, state: 'running' }
+}
+
+/** Only bots with a key hear about SSH. */
+function sshForPrompt(db: Db, botId: string): { hosts: SshHost[] } | null {
+  const info = botSsh.info(db, botId)
+  return info?.public_key ? { hosts: info.hosts } : null
 }
