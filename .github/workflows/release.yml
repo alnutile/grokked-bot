@@ -2,8 +2,8 @@
 # they pull on first run. To cut a release, merge a PR that bumps the version in
 # apps/desktop/src-tauri/tauri.conf.json (and the other version files, see CLAUDE.md).
 # When main gets a version that has no tag yet, this builds and smoke-tests both Macs and
-# Linux, tags the commit vX.Y.Z and opens a *draft* GitHub release with the notes from
-# .github/release-notes.md. Publish it from the Releases page.
+# Linux, tags the commit vX.Y.Z and publishes the GitHub release (marked Latest) with the
+# notes from .github/release-notes.md.
 #
 # Pushing a tag by hand (git tag v0.2.0 && git push origin v0.2.0) still works. Running
 # it from the Actions tab on main releases the current version if it has no tag yet
@@ -243,10 +243,11 @@ jobs:
         run: |
           git tag "v${{ needs.version.outputs.version }}" "$GITHUB_SHA"
           git push origin "v${{ needs.version.outputs.version }}"
-      # A draft, so the notes get a human read before they're public.
+      # Published straight away as Latest: merging the version bump is the release.
       - uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: false
+          make_latest: true
           tag_name: v${{ needs.version.outputs.version }}
           name: Grokked Bot v${{ needs.version.outputs.version }}
           body_path: .github/release-notes.md

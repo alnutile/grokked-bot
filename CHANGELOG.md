@@ -6,6 +6,9 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **New versions go live on their own.** Each release is published as soon as its builds
+  and checks pass, so the download links always give you the newest version.
+
 ## 0.4.1 (2026-10-13)
 
 - **Saving a bot's Env works.** In the 0.4.0 app, clicking Save on the Env tab said
