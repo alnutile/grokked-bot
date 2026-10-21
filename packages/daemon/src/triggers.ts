@@ -22,7 +22,7 @@ type Row = {
 
 export interface Trigger {
   id: string; bot_id: string; kind: 'webhook' | 'cron'; name: string; instruction: string
-  cron?: string; tz?: string; public: boolean; enabled: boolean
+  cron?: string; tz?: string; once?: boolean; public: boolean; enabled: boolean
   next_fire_at: number | null; last_fire_at: number | null; last_run_id: string | null
   last_run_state: string | null; thread_id: string | null; allowed_domains: string[]
   max_usd: number | null; fire_count: number; created_at: number
@@ -30,11 +30,25 @@ export interface Trigger {
 
 export interface TriggerInput {
   kind?: 'webhook' | 'cron'; name?: string; instruction?: string; cron?: string; tz?: string
+  /** A one-off: turns itself off after it fires. */
+  once?: boolean
   public?: boolean; enabled?: boolean; allowed_domains?: string[]; max_usd?: number | null
 }
 
 const hashToken = (t: string) => createHash('sha256').update(t).digest('hex')
 const newToken = () => `ghk_${randomBytes(24).toString('base64url')}`
+
+/** The machine's time zone: what a schedule means when nobody names one. */
+export const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+
+/** The shortest gap between the next few fires, in minutes. */
+export function minGapMinutes(cron: string, tz?: string): number {
+  const c = new Cron(cron, { timezone: tz || undefined, paused: true })
+  const runs = c.nextRuns(6)
+  let gap = Infinity
+  for (let i = 1; i < runs.length; i++) gap = Math.min(gap, (runs[i]!.getTime() - runs[i - 1]!.getTime()) / 60_000)
+  return gap
+}
 
 /** When a schedule next fires, or an error that says what's wrong with it. */
 export function nextFire(cron: string, tz?: string, from = new Date()): number {
@@ -49,13 +63,13 @@ export function nextFire(cron: string, tz?: string, from = new Date()): number {
 }
 
 function shape(db: Db, r: Row): Trigger {
-  const spec = JSON.parse(r.spec_json || '{}') as { cron?: string; tz?: string }
+  const spec = JSON.parse(r.spec_json || '{}') as { cron?: string; tz?: string; once?: boolean }
   const last = r.last_run_id
     ? (db.prepare('SELECT state FROM runs WHERE id = ?').get(r.last_run_id) as { state: string } | undefined)?.state ?? null
     : null
   return {
     id: r.id, bot_id: r.bot_id, kind: r.kind, name: r.name, instruction: r.goal_template ?? '',
-    ...(r.kind === 'cron' ? { cron: spec.cron, tz: spec.tz } : {}),
+    ...(r.kind === 'cron' ? { cron: spec.cron, tz: spec.tz, once: !!spec.once } : {}),
     public: !!r.public, enabled: !!r.enabled, next_fire_at: r.next_fire_at, last_fire_at: r.last_fire_at,
     last_run_id: r.last_run_id, last_run_state: last, thread_id: r.thread_id,
     allowed_domains: JSON.parse(r.allowed_domains_json || '[]'), max_usd: r.max_usd,
@@ -91,7 +105,7 @@ export const triggers = {
       `INSERT INTO triggers (id, bot_id, kind, name, spec_json, goal_template, enabled, next_fire_at, secret_hash,
                              public, allowed_domains_json, max_usd, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, botId, kind, b.name.trim(), JSON.stringify(kind === 'cron' ? { cron: b.cron, tz: b.tz ?? '' } : {}),
+    ).run(id, botId, kind, b.name.trim(), JSON.stringify(kind === 'cron' ? { cron: b.cron, tz: b.tz ?? '', ...(b.once ? { once: true } : {}) } : {}),
           b.instruction.trim(), next, token ? hashToken(token) : null, b.public ? 1 : 0,
           JSON.stringify(b.allowed_domains ?? []), b.max_usd ?? null, Date.now())
     return { trigger: shape(db, row(db, id)!), ...(token ? { token } : {}) }
@@ -100,16 +114,17 @@ export const triggers = {
   update(db: Db, id: string, b: TriggerInput): Trigger | null {
     const r = row(db, id)
     if (!r) return null
-    const spec = JSON.parse(r.spec_json || '{}') as { cron?: string; tz?: string }
+    const spec = JSON.parse(r.spec_json || '{}') as { cron?: string; tz?: string; once?: boolean }
     const cron = b.cron ?? spec.cron
     const tz = b.tz ?? spec.tz
+    const once = b.once ?? !!spec.once
     const enabled = b.enabled ?? !!r.enabled
     const next = r.kind === 'cron' && enabled ? nextFire(String(cron ?? ''), tz) : null
     db.prepare(
       `UPDATE triggers SET name = ?, goal_template = ?, spec_json = ?, enabled = ?, next_fire_at = ?, public = ?,
                            allowed_domains_json = ?, max_usd = ? WHERE id = ?`,
     ).run(b.name?.trim() || r.name, b.instruction?.trim() || r.goal_template,
-          r.kind === 'cron' ? JSON.stringify({ cron, tz: tz ?? '' }) : r.spec_json,
+          r.kind === 'cron' ? JSON.stringify({ cron, tz: tz ?? '', ...(once ? { once: true } : {}) }) : r.spec_json,
           enabled ? 1 : 0, next, b.public === undefined ? r.public : b.public ? 1 : 0,
           b.allowed_domains ? JSON.stringify(b.allowed_domains) : r.allowed_domains_json,
           b.max_usd === undefined ? r.max_usd : b.max_usd, id)
@@ -210,8 +225,12 @@ export function startScheduler(db: Db, bus: EventBus, start: (botId: string, run
       const t = triggers.get(db, id)
       if (!t?.cron) continue
       const out = fire(db, bus, t, {}, start)
-      const next = 'error' in out ? Date.now() + 60_000 : nextFire(t.cron, t.tz)
       if ('error' in out) log.info({ trigger: id }, 'schedule due but its bot is busy; retrying in a minute')
+      if (!('error' in out) && t.once) {
+        db.prepare('UPDATE triggers SET enabled = 0, next_fire_at = NULL WHERE id = ?').run(id)
+        continue
+      }
+      const next = 'error' in out ? Date.now() + 60_000 : nextFire(t.cron, t.tz)
       db.prepare('UPDATE triggers SET next_fire_at = ? WHERE id = ?').run(next, id)
     }
   }

@@ -16,6 +16,8 @@ export function mountSettings(app: Hono, db: Db): void {
     for (const [k, v] of Object.entries(body.models ?? {})) {
       if (typeof v !== 'string' || !v.trim()) return c.json({ error: 'bad_value', message: `${k} needs a model id` }, 400)
     }
+    if (body.instructions !== undefined && typeof body.instructions !== 'string') return c.json({ error: 'bad_value', message: 'instructions must be text' }, 400)
+    if ((body.instructions ?? '').length > 20_000) return c.json({ error: 'bad_value', message: 'instructions are limited to 20,000 characters' }, 400)
     return c.json(saveConfig(body))
   })
 

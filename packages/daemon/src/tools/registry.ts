@@ -4,6 +4,7 @@ import type { BotRuntime } from '../runtime/container.ts'
 import type { Db } from '../db/index.ts'
 import { botEnv } from '../env.ts'
 import { botSsh } from '../ssh.ts'
+import { LOCAL_TZ, minGapMinutes, triggers, type Trigger } from '../triggers.ts'
 import { hostMatches, vault } from '../vault.ts'
 
 export type Risk = 'low' | 'medium' | 'high'
@@ -331,6 +332,93 @@ export const TOOLS: Tool[] = [
     },
   },
 
+  // ---------------------------------------------------------------- schedules
+  {
+    name: 'schedules_list',
+    description:
+      'List what can start you without a message: your schedules (cron) and webhooks, with their ids, ' +
+      'instructions and when each next runs. Check this before adding a schedule so you do not make a duplicate.',
+    schema: S({}),
+    risk: 'low', approval: 'never', replaySafe: true,
+    run: async (_args, ctx) => ({ ok: true, time_zone: LOCAL_TZ, triggers: triggers.list(ctx.db, ctx.botId).map(forModel) }),
+  },
+  {
+    name: 'schedule_create',
+    description:
+      'Make a schedule that starts you again later, on your own, with a standing instruction. This is the only ' +
+      'way to do anything later or repeatedly ("every weekday at 8", "on Friday at 3pm", "check this hourly"): ' +
+      'between tasks you are not running, so you cannot wait or check back. Only make one when the human asked ' +
+      'for it. Each run starts fresh in the schedule\'s own conversation and does not see this one, so write the ' +
+      'instruction so it stands alone: what to do, where, and what to report.',
+    schema: S({
+      name: z.string().describe('Short name the human will see, like "Morning inbox check".'),
+      instruction: z.string().describe('What to do each time it fires, complete on its own.'),
+      cron: z.string().describe('5-field cron: minute hour day-of-month month day-of-week. "0 8 * * 1-5" is weekdays at 8:00; "30 15 24 10 *" is Oct 24 at 15:30.'),
+      tz: z.string().optional().describe("IANA time zone, like America/New_York. Leave it out to use the human's."),
+      once: z.boolean().default(false).describe('True for a one-off: it turns itself off after it fires.'),
+    }),
+    risk: 'medium', approval: 'never', replaySafe: false,
+    run: async (args, ctx) => {
+      const refused = startedByTrigger(ctx)
+      if (refused) return refused
+      const tz = args.tz || LOCAL_TZ
+      let gap: number
+      try { gap = minGapMinutes(args.cron, tz) } catch (e) {
+        return { ok: false, error: 'bad_schedule', message: `not a valid schedule: ${(e as Error).message}` }
+      }
+      if (!args.once && gap < MIN_GAP_MIN) {
+        return { ok: false, error: 'too_often', message: `Schedules can run at most every ${MIN_GAP_MIN} minutes; that one runs every ${Math.round(gap)}.` }
+      }
+      if (triggers.list(ctx.db, ctx.botId).filter((t) => t.kind === 'cron').length >= MAX_SCHEDULES) {
+        return { ok: false, error: 'too_many', message: `You already have ${MAX_SCHEDULES} schedules. Remove one first, or ask the human.` }
+      }
+      try {
+        const { trigger } = triggers.create(ctx.db, ctx.botId, { kind: 'cron', name: args.name, instruction: args.instruction, cron: args.cron, tz, once: args.once })
+        return { ok: true, schedule: forModel(trigger), note: 'The human can see, pause and edit it in your Triggers tab. Tell them when it next runs.' }
+      } catch (e) {
+        return { ok: false, error: 'bad_schedule', message: (e as Error).message }
+      }
+    },
+  },
+  {
+    name: 'schedule_update',
+    description: 'Change one of your schedules: pause or resume it, or change its name, instruction or timing. Only when the human asked.',
+    schema: S({
+      id: z.string().describe('An id from schedules_list.'),
+      enabled: z.boolean().optional(),
+      name: z.string().optional(),
+      instruction: z.string().optional(),
+      cron: z.string().optional(),
+      tz: z.string().optional(),
+    }),
+    risk: 'medium', approval: 'never', replaySafe: false,
+    run: async ({ id, ...b }, ctx) => {
+      const refused = startedByTrigger(ctx)
+      if (refused) return refused
+      const t = triggers.get(ctx.db, id)
+      if (!t || t.bot_id !== ctx.botId || t.kind !== 'cron') return { ok: false, error: 'not_found', message: 'You have no schedule with that id.' }
+      if (b.cron && !t.once) {
+        try {
+          if (minGapMinutes(b.cron, b.tz || t.tz) < MIN_GAP_MIN) return { ok: false, error: 'too_often', message: `Schedules can run at most every ${MIN_GAP_MIN} minutes.` }
+        } catch (e) { return { ok: false, error: 'bad_schedule', message: `not a valid schedule: ${(e as Error).message}` } }
+      }
+      try { return { ok: true, schedule: forModel(triggers.update(ctx.db, id, b)!) } }
+      catch (e) { return { ok: false, error: 'bad_schedule', message: (e as Error).message } }
+    },
+  },
+  {
+    name: 'schedule_delete',
+    description: 'Delete one of your schedules. Only when the human asked, or when a one-off job is done.',
+    schema: S({ id: z.string().describe('An id from schedules_list.') }),
+    risk: 'medium', approval: 'never', replaySafe: false,
+    run: async ({ id }, ctx) => {
+      const t = triggers.get(ctx.db, id)
+      if (!t || t.bot_id !== ctx.botId || t.kind !== 'cron') return { ok: false, error: 'not_found', message: 'You have no schedule with that id.' }
+      triggers.remove(ctx.db, id)
+      return { ok: true, deleted: t.name }
+    },
+  },
+
   // ---------------------------------------------------------------- control
   {
     name: 'finish',
@@ -358,6 +446,31 @@ export const TOOLS: Tool[] = [
     risk: 'low', approval: 'never', replaySafe: true, control: 'ask_human',
   },
 ]
+
+const MIN_GAP_MIN = 10
+const MAX_SCHEDULES = 20
+
+/** A run a schedule or webhook started can't make or change schedules: a
+ *  webhook's payload (or a page it led to) must not be able to plant a job
+ *  that keeps coming back. */
+function startedByTrigger(ctx: ToolCtx) {
+  const r = ctx.db.prepare('SELECT trigger_kind FROM runs WHERE id = ?').get(ctx.runId) as { trigger_kind: string } | undefined
+  return r && (r.trigger_kind === 'cron' || r.trigger_kind === 'webhook')
+    ? { ok: false, error: 'not_from_a_trigger', message: 'Schedules can only be made or changed when a person asks you directly, not from a run a schedule or webhook started. Tell the human what you would change.' }
+    : null
+}
+
+const when = (ms: number | null, tz?: string) => ms
+  ? new Date(ms).toLocaleString('en-US', { timeZone: tz || LOCAL_TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+  : null
+
+function forModel(t: Trigger) {
+  return {
+    id: t.id, kind: t.kind === 'cron' ? 'schedule' : 'webhook', name: t.name, instruction: t.instruction,
+    ...(t.kind === 'cron' ? { cron: t.cron, tz: t.tz || LOCAL_TZ, once: t.once } : {}),
+    enabled: t.enabled, next_run: when(t.next_fire_at, t.tz), last_run: when(t.last_fire_at, t.tz), runs_so_far: t.fire_count,
+  }
+}
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]))
 

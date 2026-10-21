@@ -166,6 +166,7 @@ function assembleMessages(db: Db, run: RunRow, botName: string, personaMd: strin
       maxSteps: run.max_steps,
       envKeys: botEnv.keys(db, run.bot_id),
       ssh: sshForPrompt(db, run.bot_id),
+      instructions: loadConfig().instructions,
     }),
   }]
 

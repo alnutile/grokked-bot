@@ -72,7 +72,8 @@ Everything below works today. Details are further down.
 - **SSH**: the bot's own SSH key. Add its public key to a server's `authorized_keys`, list
   the servers it may use, click **Test**, and it can `ssh`, `scp` and `rsync` there.
 - **Triggers**: webhooks (bearer token, optional wait-for-answer) and cron schedules, each
-  with its own conversation.
+  with its own conversation. Or just ask the bot ("every weekday at 8…", "remind me
+  Friday") and it makes the schedule itself.
 - **Media**: everything it saved or downloaded, previewable, openable on your desktop.
 - **Computer**: the live screen, take over, restart.
 
@@ -100,6 +101,8 @@ Everything below works today. Details are further down.
 
 **Settings**
 - Default budget and step / time limits; which models do the work and name conversations.
+- **Instructions**: standing rules every bot follows on every task (time zone, tone, what to
+  check with you first).
 - Remaining OpenRouter credit in the sidebar.
 - **Remote access**: webhooks on your Tailscale tailnet, and public ones through Funnel.
 
@@ -349,6 +352,15 @@ A bot can be started by more than you. In its **Triggers** tab:
 - **Schedules** — a cron schedule (or a preset like *every weekday at 8:00*), a time zone
   and an instruction: "check my inbox for anything from recruiters and summarise it".
 
+  You don't have to make them by hand: ask the bot in chat or Slack ("every Monday at 9,
+  summarise last week's PRs", "remind me Friday at 3pm to send the invoice") and it creates
+  the schedule with its `schedule_create` tool, in your time zone, and tells you when it
+  next runs. One-offs switch themselves off after they fire. Limits: at most every 10
+  minutes, 20 schedules per bot, and only when a person asks. A run that a schedule or
+  webhook started can't create or change schedules, so a webhook payload can't plant a
+  job that keeps coming back. Webhooks are still made by you, since their token is shown
+  only once.
+
 Each trigger gets its own conversation (marked ⚡ in the sidebar) with its full history.
 
 **Reaching them from other devices.** Webhooks have their own listener (port 8788) that
@@ -366,7 +378,7 @@ Not using Tailscale? Point **Headscale**, WireGuard, Caddy or a Cloudflare Tunne
 
 ```
 ~/.config/grokked/env          OPENROUTER_API_KEY, optional DOCKER_HOST   (0600)
-~/.config/grokked/config.json  model per role, default caps (written on first boot)
+~/.config/grokked/config.json  model per role, default caps, instructions for every bot
 ~/.config/grokked/token        API bearer token     (0600, generated on first boot)
 ~/.config/grokked/vault.key    encryption key for saved passwords (0600, generated on first use)
 ~/.local/share/grokked/        grokked.db, blobs, per-bot work dirs
@@ -460,6 +472,7 @@ container/act.sh run_bash command='python3 -c "print(1+1)"'
 |---|---|
 | Browser | `navigate` `snapshot` `click` `type` `find` `read_text` `scroll` `wait_for` `screenshot` |
 | The machine | `run_bash` `read_file` `edit_file` `write_file` `desktop_action` |
+| Schedules | `schedules_list` `schedule_create` `schedule_update` `schedule_delete` |
 | Control | `finish` `give_up` `ask_human` |
 
 The system prompt tells it that it *has a computer*, not that it can call a browser API:

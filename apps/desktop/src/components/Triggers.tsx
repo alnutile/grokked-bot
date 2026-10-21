@@ -12,9 +12,10 @@ const PRESETS: Array<{ label: string; cron: string }> = [
   { label: 'Every hour', cron: '0 * * * *' },
   { label: 'Every 15 minutes', cron: '*/15 * * * *' },
 ]
-const describe = (t: Trigger) =>
-  PRESETS.find((p) => p.cron === t.cron)?.label ?? `cron ${t.cron}`
 const when = (ms: number | null) => (ms ? new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'never')
+const describe = (t: Trigger) =>
+  t.once ? (t.next_fire_at ? `Once, ${when(t.next_fire_at)}` : 'Once (done)')
+    : PRESETS.find((p) => p.cron === t.cron)?.label ?? `cron ${t.cron}`
 
 /** Webhooks and schedules: what can start this bot besides you. */
 export function Triggers({ bot, onOpenThread }: { bot: Bot; onOpenThread: (threadId: string) => void }) {
@@ -49,7 +50,8 @@ export function Triggers({ bot, onOpenThread }: { bot: Bot; onOpenThread: (threa
       {list?.length === 0 && (
         <p className="dim media-empty">
           No triggers yet. A <b>webhook</b> lets another app or device start {bot.name} with a POST; a <b>schedule</b> runs
-          it on its own, like “check my email every weekday at 8”.
+          it on its own, like “check my email every weekday at 8”. You can also just ask {bot.name} in chat to do
+          something on a schedule, and it sets one up here.
         </p>
       )}
       {list?.map((t) => (
