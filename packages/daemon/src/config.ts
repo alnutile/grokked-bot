@@ -101,6 +101,8 @@ export const DEFAULT_MODELS: ModelRoles = {
 export interface Config {
   models: ModelRoles
   defaults: { max_steps: number; max_usd: number; max_wall_s: number; max_screenshots: number }
+  /** Standing instructions from Settings, added to every bot's prompt. */
+  instructions: string
 }
 
 export function loadConfig(): Config {
@@ -110,13 +112,14 @@ export function loadConfig(): Config {
     // Room for real work: a coding job (clone, install, test, fix, push, wait on
     // CI) takes 100+ steps. Dollars stay the guardrail; a bot can set its own.
     defaults: { max_steps: 150, max_usd: 10.0, max_wall_s: 3 * 3600, max_screenshots: 12 },
+    instructions: '',
   }
   if (!existsSync(path)) {
     writeFileSync(path, JSON.stringify(base, null, 2) + '\n', { mode: 0o600 })
     return base
   }
   try {
-    const user = JSON.parse(readFileSync(path, 'utf8')) as { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']> }
+    const user = JSON.parse(readFileSync(path, 'utf8')) as { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']>; instructions?: string }
     // First boot wrote the defaults of the day into config.json, so an install that
     // never touched them still says 40 steps / 1 hour. Those are the old defaults,
     // not a choice: let them follow the new ones.
@@ -125,6 +128,7 @@ export function loadConfig(): Config {
     return {
       models: { ...base.models, ...(user.models ?? {}) },
       defaults: { ...base.defaults, ...(user.defaults ?? {}) },
+      instructions: typeof user.instructions === 'string' ? user.instructions : '',
     }
   } catch {
     return base
@@ -133,11 +137,12 @@ export function loadConfig(): Config {
 
 /** Merge a change into config.json. The loop reads config every step, so a new
  *  model or cap applies from the next step on, no restart. */
-export function saveConfig(patch: { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']> }): Config {
+export function saveConfig(patch: { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']>; instructions?: string }): Config {
   const cur = loadConfig()
   const next: Config = {
     models: { ...cur.models, ...(patch.models ?? {}) },
     defaults: { ...cur.defaults, ...(patch.defaults ?? {}) },
+    instructions: patch.instructions ?? cur.instructions,
   }
   writeFileSync(join(CONFIG_DIR, 'config.json'), JSON.stringify(next, null, 2) + '\n', { mode: 0o600 })
   return next

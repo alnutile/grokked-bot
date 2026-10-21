@@ -80,4 +80,47 @@ assert.deepEqual([thread.kind, thread.title], ['trigger', 'Triage'])
 assert.equal(triggers.get(db, hook.id)!.fire_count, 1); assert.deepEqual(started, [out.run_id])
 console.log('  ok  firing starts a run in the trigger’s own conversation')
 
+// ---- the bot's own schedule tools
+const { TOOLS_BY_NAME } = await import('../src/tools/registry.ts')
+const { systemPrompt } = await import('../src/agent/prompt.ts')
+const { startScheduler, minGapMinutes } = await import('../src/triggers.ts')
+const tool = (name: string, args: any, runId = 'r0') =>
+  TOOLS_BY_NAME.get(name)!.run!(args, { db, botId: 'b1', runId, runtime: null as any }) as Promise<any>
+
+const made = await tool('schedule_create', { name: 'Inbox', instruction: 'Summarize my inbox.', cron: '0 8 * * 1-5', once: false })
+assert.equal(made.ok, true); assert.equal(made.schedule.kind, 'schedule'); assert.ok(made.schedule.next_run)
+assert.ok(triggers.list(db, 'b1').some((t) => t.id === made.schedule.id), 'shows up in the Triggers tab')
+assert.equal((await tool('schedule_create', { name: 'x', instruction: 'y', cron: '* * * * *', once: false })).error, 'too_often')
+assert.equal((await tool('schedule_create', { name: 'x', instruction: 'y', cron: 'nope', once: false })).error, 'bad_schedule')
+assert.equal(minGapMinutes('*/15 * * * *'), 15)
+const fromHook = await tool('schedule_create', { name: 'x', instruction: 'y', cron: '0 9 * * *', once: false }, out.run_id)
+assert.equal(fromHook.error, 'not_from_a_trigger', 'a webhook-started run cannot plant a schedule')
+assert.equal((await tool('schedule_update', { id: hook.id, enabled: false })).error, 'not_found', 'webhooks are not the bot’s to edit')
+const listed = await tool('schedules_list', {})
+assert.ok(listed.triggers.some((t: any) => t.kind === 'webhook') && listed.time_zone)
+const paused = await tool('schedule_update', { id: made.schedule.id, enabled: false })
+assert.equal(paused.schedule.enabled, false)
+assert.equal((await tool('schedule_delete', { id: made.schedule.id })).ok, true)
+assert.equal(triggers.get(db, made.schedule.id), null)
+console.log('  ok  the bot can list, make, pause and delete its schedules, within limits')
+
+// ---- a one-off turns itself off after it fires
+db.prepare(`UPDATE runs SET state = 'succeeded'`).run()
+const one = await tool('schedule_create', { name: 'Remind', instruction: 'Remind me.', cron: '30 15 24 10 *', once: true })
+db.prepare('UPDATE triggers SET next_fire_at = ? WHERE id = ?').run(Date.now() - 1000, one.schedule.id)
+const stop = startScheduler(db, bus, () => {})
+await new Promise((r) => setTimeout(r, 3300))
+stop()
+const after = triggers.get(db, one.schedule.id)!
+assert.deepEqual([after.enabled, after.next_fire_at, after.fire_count], [false, null, 1])
+console.log('  ok  a one-off schedule fires once, then switches off')
+
+// ---- the prompt explains the harness and carries Settings → Instructions
+const p = systemPrompt({ botName: 'B', personaMd: '', goal: 'g', allowedDomains: [], maxSteps: 10,
+  instructions: 'Always answer in French.', today: 'Tuesday, October 21, 2026', timeZone: 'America/New_York' })
+assert.match(p, /schedule_create/); assert.match(p, /America\/New_York/)
+assert.match(p, /Standing instructions from your human[\s\S]*Always answer in French\./)
+assert.doesNotMatch(systemPrompt({ botName: 'B', personaMd: '', goal: 'g', allowedDomains: [], maxSteps: 10 }), /Standing instructions/)
+console.log('  ok  the prompt says how work reaches the bot and includes the standing instructions')
+
 console.log('\nall passed')

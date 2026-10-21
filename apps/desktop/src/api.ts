@@ -61,6 +61,8 @@ export interface ThreadSummary {
 export interface Settings {
   models: { planner: string; worker: string; vision: string; distiller: string; classifier: string }
   defaults: { max_steps: number; max_usd: number; max_wall_s: number; max_screenshots: number }
+  /** Added to every bot's prompt. */
+  instructions: string
 }
 
 export interface ModelInfo { id: string; name: string; context_length: number; max_completion_tokens: number; prompt_per_m: number; completion_per_m: number }
@@ -76,7 +78,7 @@ export type CredentialInput = Partial<Pick<Credential, 'label' | 'url' | 'userna
 
 export interface Trigger {
   id: string; bot_id: string; kind: 'webhook' | 'cron'; name: string; instruction: string
-  cron?: string; tz?: string; public: boolean; enabled: boolean
+  cron?: string; tz?: string; once?: boolean; public: boolean; enabled: boolean
   next_fire_at: number | null; last_fire_at: number | null; last_run_id: string | null
   last_run_state: string | null; thread_id: string | null; allowed_domains: string[]
   max_usd: number | null; fire_count: number; created_at: number
@@ -166,7 +168,7 @@ export const api = {
       }),
     }).then((r) => r.run),
   settings: () => req<Settings>('/v1/settings'),
-  saveSettings: (patch: { models?: Partial<Settings['models']>; defaults?: Partial<Settings['defaults']> }) =>
+  saveSettings: (patch: { models?: Partial<Settings['models']>; defaults?: Partial<Settings['defaults']>; instructions?: string }) =>
     req<Settings>('/v1/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
   models: () => req<{ models: ModelInfo[] }>('/v1/models').then((r) => r.models),
   credentials: () => req<{ credentials: Credential[] }>('/v1/credentials').then((r) => r.credentials),

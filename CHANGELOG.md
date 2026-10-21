@@ -6,6 +6,17 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **Just ask for a schedule.** Tell a bot "every weekday at 8, check Hacker News and give me
+  the top story" (in the app or in Slack) and it sets up the schedule itself, then tells
+  you when it next runs. One-off reminders ("Friday at 3pm") switch themselves off after
+  they fire. Everything it sets up shows in its **Triggers** tab, where you can pause or
+  change it. Bots now know how work reaches them, so they no longer promise to "check back
+  later" when they can't.
+- **Instructions for every bot.** A new **Settings → Instructions** box holds your standing
+  rules (your time zone, tone, what to check with you first). Every bot follows them on
+  every task, in the app, in Slack and on its schedules, without repeating them in each
+  bot's Details.
+
 - **A one-line diagnostics report.** When something goes wrong, one Terminal command
   writes a report to your Desktop (versions, Docker, your bots, Slack status, recent runs
   and the log) with every token and key scrubbed out, ready to send to whoever is helping.

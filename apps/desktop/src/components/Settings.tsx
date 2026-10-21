@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api, type Bot, type Credential, type CredentialInput, type ModelInfo, type RemoteStatus, type Settings as SettingsT } from '../api.ts'
 import { Avatar } from './Avatar.tsx'
 
-type Section = 'general' | 'models' | 'passwords' | 'remote'
+type Section = 'general' | 'instructions' | 'models' | 'passwords' | 'remote'
 
 const PROVIDERS = [
   { id: 'google', label: 'Google', site: 'accounts.google.com' },
@@ -36,7 +36,7 @@ export function Settings({ bots, onClose }: { bots: Bot[]; onClose: () => void }
       <div className="settings">
         <nav className="settings-nav">
           <div className="settings-title">Settings</div>
-          {([['general', 'General'], ['models', 'Models'], ['passwords', 'Passwords'], ['remote', 'Remote access']] as const).map(([k, label]) => (
+          {([['general', 'General'], ['instructions', 'Instructions'], ['models', 'Models'], ['passwords', 'Passwords'], ['remote', 'Remote access']] as const).map(([k, label]) => (
             <button key={k} className={`settings-tab ${section === k ? 'settings-tab-on' : ''}`} onClick={() => setSection(k)}>
               {label}
             </button>
@@ -45,9 +45,10 @@ export function Settings({ bots, onClose }: { bots: Bot[]; onClose: () => void }
         </nav>
         <div className="settings-body">
           <button className="icon-btn settings-close" onClick={onClose} title="Close (Esc)">✕</button>
-          {!settings && (section === 'general' || section === 'models') && <p className="dim">Loading…</p>}
+          {!settings && (section === 'general' || section === 'instructions' || section === 'models') && <p className="dim">Loading…</p>}
           {section === 'remote' && <Remote />}
           {settings && section === 'general' && <General s={settings} save={save} />}
+          {settings && section === 'instructions' && <Instructions s={settings} save={save} />}
           {settings && section === 'models' && <Models s={settings} save={save} />}
           {section === 'passwords' && <Passwords bots={bots} />}
         </div>
@@ -85,6 +86,35 @@ function General({ s, save }: { s: SettingsT; save: (p: Parameters<typeof api.sa
       <NumberField label="Max screenshots per message" value={s.defaults.max_screenshots}
         hint="Screenshots are the expensive way to look at a page; the bot reads pages as text first."
         onSave={(n) => save({ defaults: { max_screenshots: Math.round(n) } })} />
+    </div>
+  )
+}
+
+const EXAMPLE = `- I'm in Boston. Use US dates and dollars.
+- Before you change anything on a server or in a repo, say what you're about to do.
+- When I ask for something regularly, set up a schedule and tell me when it next runs.
+- Keep Slack answers to a few lines; put detail in a file and say where it is.`
+
+/** Standing rules for every bot: the house style, the do's and don'ts. */
+function Instructions({ s, save }: { s: SettingsT; save: (p: Parameters<typeof api.saveSettings>[0]) => Promise<void> | void }) {
+  const [v, setV] = useState(s.instructions)
+  const dirty = v !== s.instructions
+  return (
+    <div className="settings-section">
+      <h2>Instructions for every bot</h2>
+      <p className="dim">
+        Every bot reads these before every task, in the app, in Slack and on its schedules. Use them for how you like
+        work done: your time zone, tone, what to check with you first. A bot's own role (in its Details) is added after
+        these. Each bot already knows it has a computer, a shell, a browser and schedules; you don't need to explain that.
+      </p>
+      <label className="field">
+        <textarea rows={12} value={v} placeholder={EXAMPLE} onChange={(e) => setV(e.target.value)} />
+        <span className="field-hint">{v.length ? `${v.length.toLocaleString()} characters. ` : ''}Applies from each bot's next step, no restart.</span>
+      </label>
+      <div className="row-gap">
+        <button className="btn btn-sm" disabled={!dirty} onClick={() => save({ instructions: v })}>Save</button>
+        {dirty && <button className="btn btn-ghost btn-sm" onClick={() => setV(s.instructions)}>Undo changes</button>}
+      </div>
     </div>
   )
 }
