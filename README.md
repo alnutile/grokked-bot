@@ -104,6 +104,7 @@ Everything below works today. Details are further down.
 - **Instructions**: standing rules every bot follows on every task (time zone, tone, what to
   check with you first).
 - Remaining OpenRouter credit in the sidebar.
+- The version you're running, at the bottom of Settings.
 - **Remote access**: webhooks on your Tailscale tailnet, and public ones through Funnel.
 
 **Beyond the app**
