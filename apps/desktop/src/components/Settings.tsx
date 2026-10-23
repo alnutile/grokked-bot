@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { getVersion } from '@tauri-apps/api/app'
 import { api, type Bot, type Credential, type CredentialInput, type ModelInfo, type RemoteStatus, type Settings as SettingsT } from '../api.ts'
 import { Avatar } from './Avatar.tsx'
 
@@ -17,8 +18,13 @@ export function Settings({ bots, onClose }: { bots: Bot[]; onClose: () => void }
   const [section, setSection] = useState<Section>('general')
   const [settings, setSettings] = useState<SettingsT | null>(null)
   const [note, setNote] = useState<string | null>(null)
+  const [version, setVersion] = useState<{ app?: string; service?: string }>({})
 
   useEffect(() => { void api.settings().then(setSettings).catch((e) => setNote(String(e.message))) }, [])
+  useEffect(() => {
+    void getVersion().then((app) => setVersion((v) => ({ ...v, app }))).catch(() => {})
+    void api.health().then((h) => setVersion((v) => ({ ...v, service: h.version }))).catch(() => {})
+  }, [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -42,6 +48,10 @@ export function Settings({ bots, onClose }: { bots: Bot[]; onClose: () => void }
             </button>
           ))}
           <span className="settings-note">{note}</span>
+          <span className="settings-version" title="The app, and the background service that runs your bots">
+            Grokked Bot {version.app ?? version.service ?? '…'}
+            {version.app && version.service && version.service !== version.app && <span> · service {version.service}</span>}
+          </span>
         </nav>
         <div className="settings-body">
           <button className="icon-btn settings-close" onClick={onClose} title="Close (Esc)">✕</button>

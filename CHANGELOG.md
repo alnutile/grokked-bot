@@ -6,6 +6,9 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **See your version.** Settings now shows which version of Grokked Bot you're running
+  (bottom left), so you can tell at a glance whether you're up to date.
+
 - **Just ask for a schedule.** Tell a bot "every weekday at 8, check Hacker News and give me
   the top story" (in the app or in Slack) and it sets up the schedule itself, then tells
   you when it next runs. One-off reminders ("Friday at 3pm") switch themselves off after
