@@ -6,8 +6,7 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
-- **See your version.** Settings now shows which version of Grokked Bot you're running
-  (bottom left), so you can tell at a glance whether you're up to date.
+## 0.6.0 (2026-10-25)
 
 - **Just ask for a schedule.** Tell a bot "every weekday at 8, check Hacker News and give me
   the top story" (in the app or in Slack) and it sets up the schedule itself, then tells
@@ -19,7 +18,8 @@ says what you can now do and why it matters. Downloads for every release are on 
   rules (your time zone, tone, what to check with you first). Every bot follows them on
   every task, in the app, in Slack and on its schedules, without repeating them in each
   bot's Details.
-
+- **See your version.** Settings now shows which version of Grokked Bot you're running
+  (bottom left), so you can tell at a glance whether you're up to date.
 - **A one-line diagnostics report.** When something goes wrong, one Terminal command
   writes a report to your Desktop (versions, Docker, your bots, Slack status, recent runs
   and the log) with every token and key scrubbed out, ready to send to whoever is helping.

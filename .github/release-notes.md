@@ -1,16 +1,22 @@
-## What's new in 0.5.0
+## What's new in 0.6.0
 
-- **Your bots in Slack.** A new **Slack** tab turns a bot into a Slack teammate with its own
-  name and face. A step-by-step guide hands you the app manifest and the bot's icon, you
-  paste two tokens, and that's it: no public URL or tunnel, it connects out from your
-  computer. DM it or @mention it in a channel and it reacts 👀, shows what it's working on,
-  and answers in the thread. Only people you allow can use it.
-- **Bots can log in to your servers over SSH.** A new **SSH** tab gives each bot its own
-  key. Copy the public key (or the one-line install command) onto a server, list the
-  servers it may use, and click **Test**. Then just ask: "how much disk is free on the web
-  server?" The private key is stored encrypted and the bot can use it but never see it.
-- The bot's computer gets an update (SSH tools). On first launch after upgrading, the app
-  downloads the new image; your bots, logins and conversations carry over.
+- **Just ask for a schedule.** Tell a bot "every weekday at 8, check Hacker News and give me
+  the top story" (in the app or in Slack) and it sets up the schedule itself, then tells
+  you when it next runs. One-off reminders ("Friday at 3pm") switch themselves off after
+  they fire. Everything it sets up shows in its **Triggers** tab, where you can pause or
+  change it. Bots now know how work reaches them, so they no longer promise to "check back
+  later" when they can't.
+- **Instructions for every bot.** A new **Settings → Instructions** box holds your standing
+  rules (your time zone, tone, what to check with you first). Every bot follows them on
+  every task, in the app, in Slack and on its schedules, without repeating them in each
+  bot's Details.
+- **See your version.** Settings now shows which version of Grokked Bot you're running
+  (bottom left), so you can tell at a glance whether you're up to date.
+- **A one-line diagnostics report.** When something goes wrong, one Terminal command
+  writes a report to your Desktop (versions, Docker, your bots, Slack status, recent runs
+  and the log) with every token and key scrubbed out, ready to send to whoever is helping.
+- The bot's computer gets its 0.6.0 image. On first launch after upgrading, the app
+  downloads it; your bots, logins and conversations carry over.
 
 ## Download for Mac
 
