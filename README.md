@@ -111,6 +111,8 @@ Everything below works today. Details are further down.
 - An HTTP + WebSocket API and a CLI (`bin/task.ts`) to start and stream runs.
 - An eval suite of twelve real tasks (eleven on the web, one coding) to compare models and catch regressions.
 - Installers for Mac (Apple Silicon, Intel) and Linux (.deb, AppImage), or run from source.
+- **Run it on AWS** with one Terraform apply ([deploy/aws](deploy/aws/README.md)): a desktop you
+  open through an encrypted tunnel (no open ports), and HTTPS webhooks through CloudFront.
 
 ## On a Mac
 
