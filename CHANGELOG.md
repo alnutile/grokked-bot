@@ -6,6 +6,12 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **Run Grokked Bot on AWS.** One Terraform apply sets up a server in your (or a
+  client's) AWS account: a desktop you open from your browser through an encrypted
+  tunnel with no open ports, the app already running on it, and an HTTPS address for
+  webhooks. Bots keep working on schedules, webhooks and Slack while your laptop is
+  closed. See `deploy/aws` in the repo.
+
 ## 0.6.0 (2026-10-25)
 
 - **Just ask for a schedule.** Tell a bot "every weekday at 8, check Hacker News and give me
