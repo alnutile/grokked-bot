@@ -6,6 +6,10 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **Choose where your models run.** Connect a local OpenAI-compatible server or a direct OpenAI key, and mix them with OpenRouter across bots and model roles.
+- **Give screenshots their own model.** Choose an optional image-capable model for steps with images, or leave it blank to use the worker.
+- **See usage for each agent.** Settings now shows tokens and reported costs by bot, provider, model and role, including conversation titles. Missing prices are clearly marked.
+
 - **Run Grokked Bot on AWS.** One Terraform apply sets up a server in your (or a
   client's) AWS account: a desktop you open from your browser through an encrypted
   tunnel with no open ports, the app already running on it, and an HTTPS address for

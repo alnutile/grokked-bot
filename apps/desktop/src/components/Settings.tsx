@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getVersion } from '@tauri-apps/api/app'
 import { api, type Bot, type Credential, type CredentialInput, type ModelInfo, type RemoteStatus, type Settings as SettingsT } from '../api.ts'
+import { ProviderConnection } from './ProviderConnection.tsx'
 import { Avatar } from './Avatar.tsx'
 
-type Section = 'general' | 'instructions' | 'models' | 'passwords' | 'remote'
+type Section = 'general' | 'instructions' | 'models' | 'passwords' | 'remote' | 'usage'
 
 const PROVIDERS = [
   { id: 'google', label: 'Google', site: 'accounts.google.com' },
@@ -42,7 +43,7 @@ export function Settings({ bots, onClose }: { bots: Bot[]; onClose: () => void }
       <div className="settings">
         <nav className="settings-nav">
           <div className="settings-title">Settings</div>
-          {([['general', 'General'], ['instructions', 'Instructions'], ['models', 'Models'], ['passwords', 'Passwords'], ['remote', 'Remote access']] as const).map(([k, label]) => (
+          {([['general', 'General'], ['instructions', 'Instructions'], ['models', 'Models'], ['usage', 'Usage'], ['passwords', 'Passwords'], ['remote', 'Remote access']] as const).map(([k, label]) => (
             <button key={k} className={`settings-tab ${section === k ? 'settings-tab-on' : ''}`} onClick={() => setSection(k)}>
               {label}
             </button>
@@ -56,10 +57,11 @@ export function Settings({ bots, onClose }: { bots: Bot[]; onClose: () => void }
         <div className="settings-body">
           <button className="icon-btn settings-close" onClick={onClose} title="Close (Esc)">✕</button>
           {!settings && (section === 'general' || section === 'instructions' || section === 'models') && <p className="dim">Loading…</p>}
+          {section === 'usage' && <Usage />}
           {section === 'remote' && <Remote />}
           {settings && section === 'general' && <General s={settings} save={save} />}
           {settings && section === 'instructions' && <Instructions s={settings} save={save} />}
-          {settings && section === 'models' && <Models s={settings} save={save} />}
+          {settings && section === 'models' && <Models s={settings} save={save} onConnected={() => { void api.settings().then(setSettings).catch(e => setNote(e.message)) }} />}
           {section === 'passwords' && <Passwords bots={bots} />}
         </div>
       </div>
@@ -129,7 +131,7 @@ function Instructions({ s, save }: { s: SettingsT; save: (p: Parameters<typeof a
   )
 }
 
-const price = (m?: ModelInfo) => m ? `$${m.prompt_per_m.toFixed(2)} in · $${m.completion_per_m.toFixed(2)} out per 1M tokens` : ''
+const price = (m?: ModelInfo) => m && !m.id.includes('::') ? `$${m.prompt_per_m.toFixed(2)} in · $${m.completion_per_m.toFixed(2)} out per 1M tokens` : m ? 'Pricing and limits not reported' : ''
 
 /** Searchable picker over OpenRouter's tool-capable models. */
 export function ModelPicker({ value, onChange, allowDefault }: {
@@ -139,7 +141,8 @@ export function ModelPicker({ value, onChange, allowDefault }: {
   const [err, setErr] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
-  useEffect(() => { void api.models().then(setModels).catch((e) => setErr(String(e.message))) }, [])
+  const [provider, setProvider] = useState(value.startsWith('local::') ? 'local' : value.startsWith('openai::') ? 'openai' : 'openrouter')
+  useEffect(() => { setModels(null); setErr(null); let active = true; void api.models(provider).then(m => { if (active) setModels(m) }).catch(e => { if (active) setErr(String(e.message)) }); return () => { active = false } }, [provider, open])
   const current = models?.find((m) => m.id === value)
   const matches = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean)
@@ -150,12 +153,16 @@ export function ModelPicker({ value, onChange, allowDefault }: {
     <div className="model-picker">
       <button className="model-current" onClick={() => setOpen((o) => !o)}>
         <span className="model-id">{value || allowDefault || 'choose a model'}</span>
-        <span className="field-hint">{value ? price(current) || (models && !current ? 'not found on OpenRouter' : '') : 'uses the Settings model'}</span>
+        <span className="field-hint">{value ? price(current) || (models && !current ? 'custom model ID' : '') : 'uses the Settings model'}</span>
       </button>
       {open && (
         <div className="model-menu">
-          <input autoFocus placeholder="Search, e.g. sonnet, gemini flash, gpt" value={q} onChange={(e) => setQ(e.target.value)} />
+          <select aria-label="Model provider" value={provider} onChange={e => { setProvider(e.target.value); setQ('') }}>
+            <option value="openrouter">OpenRouter</option><option value="local">Local</option><option value="openai">OpenAI</option>
+          </select>
+          <input autoFocus placeholder="Search or enter an exact model ID, e.g. sonnet, gemini flash, gpt" value={q} onChange={(e) => setQ(e.target.value)} />
           {err && <p className="hint err">{err}</p>}
+          {q.trim() && <button className="model-opt" onClick={() => { onChange(provider === 'openrouter' ? q.trim() : `${provider}::${q.trim()}`); setOpen(false); setQ('') }}>Use exact ID: {q.trim()}</button>}
           <div className="model-list">
             {allowDefault && (
               <button className="model-opt" onClick={() => { onChange(''); setOpen(false) }}>
@@ -177,18 +184,24 @@ export function ModelPicker({ value, onChange, allowDefault }: {
   )
 }
 
-function Models({ s, save }: { s: SettingsT; save: (p: Parameters<typeof api.saveSettings>[0]) => void }) {
+function Models({ s, save, onConnected }: { s: SettingsT; save: (p: Parameters<typeof api.saveSettings>[0]) => void; onConnected: () => void }) {
   return (
     <div className="settings-section">
       <h2>Models</h2>
+      <ProviderConnection initialURL={s.local_url} onSaved={onConnected} />
       <p className="dim">
-        Any OpenRouter model that can call tools. Changes apply from the bot's next step. A bot can use a different
+        Choose a tool-capable model from OpenRouter, OpenAI, or a local server. Changes apply from the bot's next step. A bot can use a different
         worker model — set it in that bot's Details.
       </p>
       <div className="field">
         <span className="field-label">Worker — does the tasks</span>
         <ModelPicker value={s.models.worker} onChange={(id) => save({ models: { worker: id } })} />
         <span className="field-hint">The one that matters: it reads pages, decides, and acts. Strong models are worth it here.</span>
+      </div>
+      <div className="field">
+        <span className="field-label">Image model — optional</span>
+        <ModelPicker value={s.models.vision} allowDefault="Use the worker model" onChange={id => save({ models: { vision: id } })} />
+        <span className="field-hint">Used for steps whose conversation contains images. Must support images and tools. Blank uses each bot's worker.</span>
       </div>
       <div className="field">
         <span className="field-label">Titles — names conversations</span>
@@ -415,4 +428,27 @@ function Remote() {
       </div>
     </div>
   )
+}
+
+function Usage() {
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.usage>> | null>(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let active = true
+    const load = () => { void api.usage().then(d => { if (active) { setData(d); setErr('') } }).catch(e => { if (active) setErr(e.message) }) }
+    load(); const timer = setInterval(load, 10_000)
+    return () => { active = false; clearInterval(timer) }
+  }, [])
+  return <div className="settings-section"><h2>Usage by agent</h2>
+    <p className="dim">All recorded calls, including conversation titles, grouped by agent, provider, model and role. Refreshes every 10 seconds.</p>
+    <p className="field-hint">Costs are provider-reported dollars. Unknown costs are excluded from spending caps; local or direct API calls may omit prices. Token counts are reported by the server.</p>
+    {err && <p className="hint err">{err}</p>}
+    {!data ? <p>Loading…</p> : !data.rows.length ? <p>No recorded calls yet.</p> : <div style={{ overflowX: 'auto' }}><table className="usage-table">
+      <thead><tr>{['Agent / model', 'Calls', 'Input', 'Output', 'Cached', 'Reported $'].map(h => <th key={h}>{h}</th>)}</tr></thead>
+      <tbody>{data.rows.map((r, i) => <tr key={i}>
+        <td>{r.bot_name}<br /><small>{r.provider} · {r.model} · {r.role}</small>{!!r.unknown_usage_calls && <div>{r.unknown_usage_calls} calls missing token counts</div>}</td>
+        <td>{r.calls}</td><td>{r.input_tokens.toLocaleString()}</td><td>{r.output_tokens.toLocaleString()}</td><td>{r.cached_tokens.toLocaleString()}</td>
+        <td>{r.reported_cost_usd.toFixed(4)}{!!r.unknown_cost_calls && <div>+ {r.unknown_cost_calls} unpriced</div>}</td>
+      </tr>)}</tbody></table></div>}
+  </div>
 }

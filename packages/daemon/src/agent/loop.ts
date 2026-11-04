@@ -267,7 +267,7 @@ export async function executeStep(
   const bot = db.prepare('SELECT name, persona_md, model_roles_json FROM bots WHERE id = ?').get(run.bot_id) as
     { name: string; persona_md: string; model_roles_json: string } | undefined
   // A bot can override the worker model; otherwise Settings decides.
-  const workerModel = (JSON.parse(bot?.model_roles_json || '{}') as { worker?: string }).worker || cfg.models.worker
+  let workerModel = (JSON.parse(bot?.model_roles_json || '{}') as { worker?: string }).worker || cfg.models.worker
   const botName = bot?.name ?? 'Bot'
 
   // ---- preflight: every cap is checked BEFORE spending, never after ----
@@ -297,6 +297,8 @@ export async function executeStep(
   }
 
   const messages = assembleMessages(db, run, botName, bot?.persona_md ?? '')
+  const hasImages = messages.some(m => Array.isArray(m.content) && m.content.some(p => p.type === 'image_url'))
+  if (hasImages && cfg.models.vision) workerModel = cfg.models.vision
   // Sized from what OpenRouter says this model can take (see catalog.ts).
   const limits = limitsFor(await modelInfo(workerModel))
   const stepNo = run.step_no + 1
@@ -321,12 +323,12 @@ export async function executeStep(
   try {
     db.prepare(
       `INSERT INTO llm_calls (id, run_id, step_no, role, model, provider, gen_id, prompt_tokens,
-                              completion_tokens, cached_tokens, cost_usd, latency_ms, finish_reason, created_at)
-       VALUES (?, ?, ?, 'worker', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id('llm'), runId, stepNo, result.model, result.provider ?? null, result.id,
+                              completion_tokens, cached_tokens, cost_usd, latency_ms, finish_reason, created_at, bot_id, cost_known, usage_known)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id('llm'), runId, stepNo, hasImages && cfg.models.vision ? 'vision' : 'worker', result.model, result.provider ?? null, result.id ?? null,
           result.usage.prompt_tokens, result.usage.completion_tokens,
           result.usage.prompt_tokens_details?.cached_tokens ?? 0,
-          cost, result.latency_ms, result.finish_reason, now())
+          cost, result.latency_ms, result.finish_reason, now(), run.bot_id, Number(result.cost_known), Number(result.usage_known))
     db.prepare(
       `UPDATE runs SET step_no = ?, spend_usd = spend_usd + ?,
                        prompt_tokens = prompt_tokens + ?, completion_tokens = completion_tokens + ?

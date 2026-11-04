@@ -1,5 +1,5 @@
 import type { Hono } from 'hono'
-import { OPENROUTER_KEY, OPENROUTER_URL, setOpenRouterKey } from '../config.ts'
+import { OPENROUTER_KEY, OPENROUTER_URL, setOpenRouterKey, modelTarget, loadConfig } from '../config.ts'
 import { startPull, systemStatus } from '../runtime/docker.ts'
 
 /**
@@ -9,7 +9,7 @@ import { startPull, systemStatus } from '../runtime/docker.ts'
  */
 export function mountSystem(app: Hono): void {
   app.get('/v1/system', async (c) =>
-    c.json({ ...(await systemStatus()), openrouter_key: OPENROUTER_KEY !== '' }),
+    c.json({ ...(await systemStatus()), openrouter_key: OPENROUTER_KEY !== '', model_ready: [loadConfig().models.worker, loadConfig().models.classifier].every(id => { const t = modelTarget(id); return !!t.model && (t.provider === 'local' || !!t.key) }) }),
   )
 
   app.post('/v1/system/pull', async (c) => {

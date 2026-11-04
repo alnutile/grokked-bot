@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { api, type SystemStatus } from '../api.ts'
+import { ProviderConnection } from './ProviderConnection.tsx'
 import { Mascot } from './Mascot.tsx'
 
 /** Everything a bot needs that the app can't ship inside itself. */
 export const setupDone = (s: SystemStatus) =>
-  s.docker === 'ok' && s.image_state === 'present' && s.openrouter_key
+  s.docker === 'ok' && s.image_state === 'present' && (s.model_ready ?? s.openrouter_key)
 
 const open = (url: string) => openUrl(url).catch(() => window.open(url, '_blank'))
 
@@ -75,10 +76,10 @@ export function Setup({ status, onChange }: { status: SystemStatus; onChange: (s
           {status.image_state === 'present' && <p>Ready.</p>}
         </li>
 
-        <li className={status.openrouter_key ? 'done' : 'todo'}>
-          <strong>3. An OpenRouter key</strong>
+        <li className={status.model_ready ? 'done' : 'todo'}>
+          <strong>3. A model connection</strong>
           <p className="why">How your bots think. Usage is billed to your OpenRouter account.</p>
-          {status.openrouter_key
+          {status.model_ready
             ? <p>Saved.</p>
             : <>
                 <p>Paste a key from OpenRouter.{' '}
@@ -99,6 +100,8 @@ export function Setup({ status, onChange }: { status: SystemStatus; onChange: (s
                   <input type="password" placeholder="sk-or-v1-…" value={key} onChange={(e) => setKey(e.target.value)} />
                   <button className="btn" disabled={!key.trim() || saving}>{saving ? 'Checking…' : 'Save'}</button>
                 </form>
+                <p>Or connect a local model or OpenAI directly:</p>
+                <ProviderConnection setup onSaved={() => { void api.system().then(onChange) }} />
                 {keyErr && <p className="hint err">{keyErr}</p>}
               </>}
         </li>

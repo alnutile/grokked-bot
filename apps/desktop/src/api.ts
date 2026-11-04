@@ -59,6 +59,7 @@ export interface ThreadSummary {
 }
 
 export interface Settings {
+  local_url: string
   models: { planner: string; worker: string; vision: string; distiller: string; classifier: string }
   defaults: { max_steps: number; max_usd: number; max_wall_s: number; max_screenshots: number }
   /** Added to every bot's prompt. */
@@ -132,6 +133,7 @@ export interface SystemStatus {
   image_state: 'missing' | 'pulling' | 'present' | 'failed' | null
   pull_progress: string | null
   pull_error: string | null
+  model_ready: boolean
   openrouter_key: boolean
 }
 
@@ -168,9 +170,11 @@ export const api = {
       }),
     }).then((r) => r.run),
   settings: () => req<Settings>('/v1/settings'),
-  saveSettings: (patch: { models?: Partial<Settings['models']>; defaults?: Partial<Settings['defaults']>; instructions?: string }) =>
+  saveSettings: (patch: { models?: Partial<Settings['models']>; defaults?: Partial<Settings['defaults']>; instructions?: string; local_url?: string }) =>
     req<Settings>('/v1/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
-  models: () => req<{ models: ModelInfo[] }>('/v1/models').then((r) => r.models),
+  setProviderKey: (provider: string, key: string) => req(`/v1/providers/${provider}/key`, { method: 'PUT', body: JSON.stringify({ key }) }),
+  usage: () => req<{ rows: UsageRow[] }>('/v1/usage'),
+  models: (provider = 'openrouter') => req<{ models: ModelInfo[] }>(`/v1/models?provider=${provider}`).then((r) => r.models),
   credentials: () => req<{ credentials: Credential[] }>('/v1/credentials').then((r) => r.credentials),
   createCredential: (c: CredentialInput) =>
     req<{ credential: Credential }>('/v1/credentials', { method: 'POST', body: JSON.stringify(c) }).then((r) => r.credential),
@@ -295,3 +299,9 @@ export function connect(onFrame: (f: Frame) => void, onStatus: (s: 'up' | 'down'
 }
 
 export const subscribe = (topics: string[]) => (globalThis as any).__grokkedSubscribe?.(topics)
+
+export interface UsageRow {
+  bot_id: string | null; bot_name: string; provider: string; model: string; role: string; calls: number;
+  input_tokens: number; output_tokens: number; cached_tokens: number; reported_cost_usd: number;
+  unknown_cost_calls: number; unknown_usage_calls: number;
+}
