@@ -9,7 +9,7 @@ export function ProviderConnection({ onSaved, setup = false, initialURL = 'http:
   const [model, setModel] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  return <form onSubmit={async e => {
+  return <form className="provider-connection" onSubmit={async e => {
     e.preventDefault(); setBusy(true); setNote('')
     try {
       if (provider === 'local') await api.saveSettings({ local_url: url.trim() })
@@ -18,7 +18,7 @@ export function ProviderConnection({ onSaved, setup = false, initialURL = 'http:
         const id = `${provider}::${model.trim()}`
         await api.saveSettings({ models: { worker: id, classifier: id, vision: '' } })
       }
-      setKey(''); setNote('Saved. Model IDs use local:: or openai:: prefixes.'); onSaved?.()
+      setKey(''); setNote('Connection saved.'); onSaved?.()
     } catch (err) { setNote((err as Error).message) } finally { setBusy(false) }
   }}>
     <label className="field"><span className="field-label">Provider</span>
@@ -29,7 +29,7 @@ export function ProviderConnection({ onSaved, setup = false, initialURL = 'http:
     </label>
     {provider === 'local' && <label className="field"><span className="field-label">API base URL</span>
       <input required value={url} onChange={e => setUrl(e.target.value)} placeholder="http://localhost:11434/v1" />
-      <span className="field-hint">The daemon connects to this address. LM Studio commonly uses port 1234. This does not start a server.</span>
+      <span className="field-hint">Your model server’s API address. Use port 11434 for Ollama or 1234 for LM Studio.</span>
     </label>}
     <label className="field"><span className="field-label">API key {provider === 'local' ? '(optional)' : ''}</span>
       <input type="password" autoComplete="new-password" value={key} onChange={e => setKey(e.target.value)} placeholder="Blank keeps the saved key" required={setup && provider !== 'local'} />

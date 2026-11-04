@@ -78,7 +78,7 @@ export function Setup({ status, onChange }: { status: SystemStatus; onChange: (s
 
         <li className={status.model_ready ? 'done' : 'todo'}>
           <strong>3. A model connection</strong>
-          <p className="why">How your bots think. Usage is billed to your OpenRouter account.</p>
+          <p className="why">Choose where your bots think: a local model or a hosted provider.</p>
           {status.model_ready
             ? <p>Saved.</p>
             : <>

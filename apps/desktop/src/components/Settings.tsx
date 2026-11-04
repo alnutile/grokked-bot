@@ -157,7 +157,7 @@ export function ModelPicker({ value, onChange, allowDefault }: {
       </button>
       {open && (
         <div className="model-menu">
-          <select aria-label="Model provider" value={provider} onChange={e => { setProvider(e.target.value); setQ('') }}>
+          <select className="provider-select" aria-label="Model provider" value={provider} onChange={e => { setProvider(e.target.value); setQ('') }}>
             <option value="openrouter">OpenRouter</option><option value="local">Local</option><option value="openai">OpenAI</option>
           </select>
           <input autoFocus placeholder="Search or enter an exact model ID, e.g. sonnet, gemini flash, gpt" value={q} onChange={(e) => setQ(e.target.value)} />
