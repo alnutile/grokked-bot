@@ -6,6 +6,8 @@ says what you can now do and why it matters. Downloads for every release are on 
 
 ## Unreleased
 
+- **A cleaner model connection form.** Provider menus now match the app, with clearer spacing and easier-to-read connection fields.
+
 - **Choose where your models run.** Connect a local OpenAI-compatible server or a direct OpenAI key, and mix them with OpenRouter across bots and model roles.
 - **Give screenshots their own model.** Choose an optional image-capable model for steps with images, or leave it blank to use the worker.
 - **See usage for each agent.** Settings now shows tokens and reported costs by bot, provider, model and role, including conversation titles. Missing prices are clearly marked.

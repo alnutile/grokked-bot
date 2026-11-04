@@ -343,7 +343,8 @@ button { font: inherit; }
 .conv-slack { color: #c792ea; }
 
 /* ---------- first-run setup ---------- */
-.setup { max-width: 520px; margin: 0 auto; }
+.setup { max-width: 520px; margin: 0 auto; justify-content: flex-start; overflow-y: auto; }
+.setup > * { flex-shrink: 0; }
 .steps { list-style: none; padding: 0; margin: 8px 0 0; width: 100%; display: flex; flex-direction: column; gap: 10px; }
 .steps li { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
             display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
@@ -413,3 +414,23 @@ button { font: inherit; }
 .usage-table th, .usage-table td { padding: 10px 8px; text-align: right; border-bottom: 1px solid var(--border); vertical-align: top; }
 .usage-table th:first-child, .usage-table td:first-child { text-align: left; }
 .usage-table small { opacity: .7; overflow-wrap: anywhere; }
+
+/* Model connections share the app's rounded inputs and clear field spacing. */
+.provider-connection { display: flex; flex-direction: column; gap: 18px; width: 100%; min-width: 0; padding: 8px 0; }
+.provider-connection .field { gap: 8px; }
+.provider-connection .field-label { font-size: 12px; font-weight: 500; color: var(--dim); }
+.provider-connection .field-hint { font-size: 12px; line-height: 1.5; color: var(--dim); }
+.provider-connection input, .provider-connection select { min-height: 44px; width: 100%; font-size: 13px; }
+.provider-connection select, .provider-select {
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 40px 11px 13px; font: inherit; font-size: 13px; outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b929e' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 13px center;
+}
+.provider-connection input { border-radius: 10px; padding: 11px 13px; }
+.provider-connection select:hover, .provider-select:hover { border-color: var(--dim); }
+.provider-connection input:focus, .provider-connection select:focus-visible, .provider-select:focus-visible {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgb(91 140 255 / 14%);
+}
+.provider-connection > .btn { align-self: flex-start; min-height: 40px; padding: 10px 16px; border-radius: 10px; margin-top: 2px; }
