@@ -1,4 +1,4 @@
-import { OPENROUTER_KEY, OPENROUTER_URL } from '../config.ts'
+import { OPENROUTER_KEY, OPENROUTER_URL, modelTarget } from '../config.ts'
 import { log } from '../log.ts'
 
 /* OpenRouter is plain OpenAI-shaped HTTP. There is no SDK worth wrapping, and
@@ -61,6 +61,8 @@ export interface ChatResult {
   /** Real dollars, BYOK-aware. Use this, not usage.cost. */
   cost_usd: number
   latency_ms: number
+  cost_known: boolean
+  usage_known: boolean
 }
 
 export class ModelError extends Error {
@@ -121,18 +123,18 @@ export function withCacheBreakpoints(model: string, messages: ChatMessage[]): Ch
 const CALL_TIMEOUT_MS = 150_000
 
 export async function chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResult> {
-  if (!OPENROUTER_KEY) throw new ModelError('OPENROUTER_API_KEY is not set')
+  const target = modelTarget(req.model)
+  if (!target.key && target.provider !== 'local') throw new ModelError(`${target.provider} API key is not set`)
 
   const body: Record<string, unknown> = {
-    model: req.model,
-    messages: withCacheBreakpoints(req.model, req.messages),
+    model: target.model,
+    messages: target.provider === 'openrouter' ? withCacheBreakpoints(req.model, req.messages) : req.messages.map(m => ({ ...m, content: Array.isArray(m.content) ? m.content.map(({ cache_control, ...part }) => part) : m.content })),
     // Concurrent UI actions are a race condition, not a speedup.
     parallel_tool_calls: false,
     // Ask OpenRouter for real token counts and real cost rather than computing
     // an estimate from a price table that would silently drift.
-    usage: { include: true },
-    temperature: req.temperature ?? 0.2,
-    max_tokens: req.max_tokens ?? 4096,
+    ...(target.provider === 'openrouter' ? { usage: { include: true } } : {}),
+    ...(target.provider === 'openai' ? { max_completion_tokens: req.max_tokens ?? 4096 } : { temperature: req.temperature ?? 0.2, max_tokens: req.max_tokens ?? 4096 }),
   }
   if (req.tools?.length) {
     body.tools = req.tools
@@ -143,13 +145,13 @@ export async function chat(req: ChatRequest, signal?: AbortSignal): Promise<Chat
     // instead guaranteed by validateModels() on boot, and a response that comes
     // back with no tool_calls is handled by the loop's nudge path.
   }
-  if (req.fallbacks?.length) body.models = [req.model, ...req.fallbacks]
+  if (target.provider === 'openrouter' && req.fallbacks?.length) body.models = [req.model, ...req.fallbacks]
 
   const started = Date.now()
-  const res = await fetch(`${OPENROUTER_URL}/chat/completions`, {
+  const res = await fetch(`${target.url}/chat/completions`, {
     method: 'POST',
     headers: {
-      authorization: `Bearer ${OPENROUTER_KEY}`,
+      ...(target.key ? { authorization: `Bearer ${target.key}` } : {}),
       'content-type': 'application/json',
       'HTTP-Referer': 'https://github.com/alnutile/grokked-bot',
       'X-Title': 'Grokked Bot',
@@ -157,7 +159,7 @@ export async function chat(req: ChatRequest, signal?: AbortSignal): Promise<Chat
     body: JSON.stringify(body),
     // A provider can accept the request and never answer. Without a deadline that
     // froze a run on one step indefinitely; timing out makes it a retry instead.
-    signal: signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(CALL_TIMEOUT_MS)]) : AbortSignal.timeout(CALL_TIMEOUT_MS),
   }).catch((e: Error) => {
     const timedOut = e.name === 'TimeoutError' || e.name === 'AbortError'
     throw new ModelError(timedOut ? `no answer from ${req.model} in ${CALL_TIMEOUT_MS / 1000}s` : `network: ${e.message}`, undefined, true)
@@ -168,7 +170,7 @@ export async function chat(req: ChatRequest, signal?: AbortSignal): Promise<Chat
   })
   if (!res.ok) {
     throw new ModelError(
-      `openrouter ${res.status}: ${text.slice(0, 400)}`,
+      `${target.provider} ${res.status}: ${text.slice(0, 400)}`,
       res.status,
       res.status === 429 || res.status >= 500,
     )
@@ -176,21 +178,23 @@ export async function chat(req: ChatRequest, signal?: AbortSignal): Promise<Chat
 
   let json: any
   try { json = JSON.parse(text) } catch { throw new ModelError(`bad JSON: ${text.slice(0, 200)}`) }
-  if (json.error) throw new ModelError(`openrouter: ${json.error.message ?? JSON.stringify(json.error)}`)
+  if (json.error) throw new ModelError(`${target.provider}: ${json.error.message ?? JSON.stringify(json.error)}`)
 
   const choice = json.choices?.[0]
   if (!choice) throw new ModelError(`no choices: ${text.slice(0, 200)}`)
 
-  const usage: Usage = json.usage ?? { prompt_tokens: 0, completion_tokens: 0 }
+  const usage: Usage = { prompt_tokens: 0, completion_tokens: 0, ...json.usage }
   return {
     id: json.id,
     model: json.model ?? req.model,
-    provider: json.provider,
+    provider: target.provider,
     content: choice.message?.content ?? null,
     tool_calls: choice.message?.tool_calls ?? [],
     finish_reason: choice.finish_reason ?? 'unknown',
     usage,
     cost_usd: effectiveCost(usage),
+    cost_known: Number.isFinite(usage.cost) || Number.isFinite(usage.cost_details?.upstream_inference_cost),
+    usage_known: Number.isFinite(json.usage?.prompt_tokens) && Number.isFinite(json.usage?.completion_tokens),
     latency_ms: Date.now() - started,
   }
 }
@@ -203,7 +207,7 @@ export async function validateModels(ids: string[]): Promise<void> {
     })
     if (!res.ok) return
     const known = new Set(((await res.json()) as any).data.map((m: any) => m.id as string))
-    for (const id of new Set(ids)) {
+    for (const id of new Set(ids.filter(id => id && !id.includes('::')))) {
       if (!known.has(id)) log.warn({ model: id }, 'configured model is not a tool-capable OpenRouter model')
     }
   } catch (e) {

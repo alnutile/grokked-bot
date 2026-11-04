@@ -408,3 +408,8 @@ button { font: inherit; }
 .slack-access { display: flex; flex-direction: column; gap: 8px; }
 .slack-access .radio { display: flex; gap: 6px; align-items: center; font-size: 12px; flex-direction: row; }
 .slack-user { grid-template-columns: 1fr auto; align-items: center; }
+
+.usage-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.usage-table th, .usage-table td { padding: 10px 8px; text-align: right; border-bottom: 1px solid var(--border); vertical-align: top; }
+.usage-table th:first-child, .usage-table td:first-child { text-align: left; }
+.usage-table small { opacity: .7; overflow-wrap: anywhere; }

@@ -1,4 +1,4 @@
-import { OPENROUTER_KEY, OPENROUTER_URL } from '../config.ts'
+import { OPENROUTER_KEY, OPENROUTER_URL, modelTarget } from '../config.ts'
 import { log } from '../log.ts'
 
 /**
@@ -20,7 +20,14 @@ export interface ModelInfo {
 let cache: { at: number; models: ModelInfo[]; byId: Map<string, ModelInfo> } | null = null
 let inflight: Promise<ModelInfo[]> | null = null
 
-export async function toolModels(): Promise<ModelInfo[]> {
+export async function toolModels(provider = 'openrouter'): Promise<ModelInfo[]> {
+  if (provider !== 'openrouter') {
+    const target = modelTarget(`${provider}::unused`)
+    const res = await fetch(`${target.url}/models`, { headers: target.key ? { authorization: `Bearer ${target.key}` } : {}, signal: AbortSignal.timeout(10_000) })
+    if (!res.ok) throw new Error(`${provider} /models answered ${res.status}`)
+    const data = ((await res.json()) as any).data
+    return data.map((m: any) => ({ id: `${provider}::${m.id}`, name: m.id, context_length: 0, max_completion_tokens: 0, prompt_per_m: 0, completion_per_m: 0 }))
+  }
   if (cache && Date.now() - cache.at < 3600_000) return cache.models
   inflight ??= (async () => {
     try {
@@ -46,6 +53,7 @@ export async function toolModels(): Promise<ModelInfo[]> {
 
 /** One model's details, or undefined if the list can't be fetched or doesn't have it. */
 export async function modelInfo(id: string): Promise<ModelInfo | undefined> {
+  if (id.includes('::')) return undefined
   try {
     await toolModels()
   } catch (e) {

@@ -53,7 +53,7 @@ export function setOpenRouterKey(key: string): void {
   const lines = existsSync(ENV_PATH)
     ? readFileSync(ENV_PATH, 'utf8').split('\n').filter((l) => l && !l.startsWith('OPENROUTER_API_KEY='))
     : []
-  lines.push(`OPENROUTER_API_KEY=${key}`)
+  lines.push(`OPENROUTER_API_KEY=${JSON.stringify(key)}`)
   writeFileSync(ENV_PATH, lines.join('\n') + '\n', { mode: 0o600 })
 }
 
@@ -93,7 +93,7 @@ export interface ModelRoles {
 export const DEFAULT_MODELS: ModelRoles = {
   planner: 'anthropic/claude-opus-4.8',
   worker: 'anthropic/claude-sonnet-5',
-  vision: 'anthropic/claude-sonnet-5',
+  vision: '',
   distiller: 'google/gemini-2.5-flash-lite',
   classifier: 'google/gemini-2.5-flash-lite',
 }
@@ -103,6 +103,7 @@ export interface Config {
   defaults: { max_steps: number; max_usd: number; max_wall_s: number; max_screenshots: number }
   /** Standing instructions from Settings, added to every bot's prompt. */
   instructions: string
+  local_url: string
 }
 
 export function loadConfig(): Config {
@@ -113,13 +114,14 @@ export function loadConfig(): Config {
     // CI) takes 100+ steps. Dollars stay the guardrail; a bot can set its own.
     defaults: { max_steps: 150, max_usd: 10.0, max_wall_s: 3 * 3600, max_screenshots: 12 },
     instructions: '',
+    local_url: 'http://localhost:11434/v1',
   }
   if (!existsSync(path)) {
     writeFileSync(path, JSON.stringify(base, null, 2) + '\n', { mode: 0o600 })
     return base
   }
   try {
-    const user = JSON.parse(readFileSync(path, 'utf8')) as { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']>; instructions?: string }
+    const user = JSON.parse(readFileSync(path, 'utf8')) as { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']>; instructions?: string; local_url?: string }
     // First boot wrote the defaults of the day into config.json, so an install that
     // never touched them still says 40 steps / 1 hour. Those are the old defaults,
     // not a choice: let them follow the new ones.
@@ -129,6 +131,7 @@ export function loadConfig(): Config {
       models: { ...base.models, ...(user.models ?? {}) },
       defaults: { ...base.defaults, ...(user.defaults ?? {}) },
       instructions: typeof user.instructions === 'string' ? user.instructions : '',
+      local_url: user.local_url ?? base.local_url,
     }
   } catch {
     return base
@@ -137,12 +140,13 @@ export function loadConfig(): Config {
 
 /** Merge a change into config.json. The loop reads config every step, so a new
  *  model or cap applies from the next step on, no restart. */
-export function saveConfig(patch: { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']>; instructions?: string }): Config {
+export function saveConfig(patch: { models?: Partial<ModelRoles>; defaults?: Partial<Config['defaults']>; instructions?: string; local_url?: string }): Config {
   const cur = loadConfig()
   const next: Config = {
     models: { ...cur.models, ...(patch.models ?? {}) },
     defaults: { ...cur.defaults, ...(patch.defaults ?? {}) },
     instructions: patch.instructions ?? cur.instructions,
+    local_url: patch.local_url ?? cur.local_url,
   }
   writeFileSync(join(CONFIG_DIR, 'config.json'), JSON.stringify(next, null, 2) + '\n', { mode: 0o600 })
   return next
@@ -176,4 +180,23 @@ export function loadOrCreateToken(): string {
   const token = randomBytes(32).toString('base64url')
   writeFileSync(TOKEN_PATH, token + '\n', { mode: 0o600 })
   return token
+}
+
+/** Provider keys live in the owner-only env file, never in settings responses. */
+export function providerKey(provider: string): string {
+  return provider === 'openrouter' ? OPENROUTER_KEY : process.env[provider === 'local' ? 'LOCAL_API_KEY' : 'OPENAI_API_KEY'] ?? ''
+}
+export function setProviderKey(provider: string, key: string): void {
+  if (provider === 'openrouter') return setOpenRouterKey(key)
+  const name = provider === 'local' ? 'LOCAL_API_KEY' : 'OPENAI_API_KEY'
+  process.env[name] = key
+  const lines = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, 'utf8').split('\n').filter(l => l && !l.startsWith(`${name}=`)) : []
+  lines.push(`${name}=${JSON.stringify(key)}`)
+  writeFileSync(ENV_PATH, lines.join('\n') + '\n', { mode: 0o600 })
+}
+export function modelTarget(id: string): { provider: 'local' | 'openai' | 'openrouter'; model: string; url: string; key: string } {
+  const provider = id.startsWith('local::') ? 'local' : id.startsWith('openai::') ? 'openai' : 'openrouter'
+  return { provider, model: provider === 'openrouter' ? id : id.slice(id.indexOf('::') + 2),
+    url: (provider === 'local' ? loadConfig().local_url : provider === 'openai' ? 'https://api.openai.com/v1' : OPENROUTER_URL).replace(/\/+$/, ''),
+    key: providerKey(provider) }
 }

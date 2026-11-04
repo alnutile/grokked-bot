@@ -51,6 +51,10 @@ say what the bot is for, and send it a message.
 
 ## What it can do
 
+- **Local models and direct OpenAI:** connect an existing OpenAI-compatible server or use an OpenAI API key, alongside OpenRouter. Mix providers per bot and role.
+- **Optional image model:** select a model for steps containing screenshots, or leave it blank to use the worker.
+- **Usage by agent:** Settings shows input, output and cached tokens, calls and reported costs by bot, provider, model and role, including title generation.
+
 Everything below works today. Details are further down.
 
 **Bots, each with its own computer**
@@ -127,7 +131,7 @@ the app isn't notarized yet: open **System Settings → Privacy & Security** and
 1. **Docker.** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
    (or OrbStack) and open it. It supplies the Linux VM each bot's computer runs in.
 2. **The bot's computer.** A one-time ~5 GB download, started from the app.
-3. **An OpenRouter key.** Pasted into the app, checked, and saved.
+3. **A model connection.** An OpenRouter key, direct OpenAI key, or local OpenAI-compatible server.
 
 The app ships its own Node and runs the daemon itself. Two differences from Linux:
 **bots stop when you quit the app**, and on Apple Silicon the bot's Chrome runs under
@@ -391,11 +395,37 @@ On macOS all of these live in `~/Library/Application Support/Grokked/` instead, 
 with `daemon.log`, the daemon's output.
 
 **Settings** in the app edits `config.json`: the `worker` model does the actual task and
-`classifier` names conversations, using any tool-capable OpenRouter model id; the defaults
+`classifier` names conversations; the defaults
 are the per-run caps (`max_steps`, `max_usd`, `max_wall_s`). Changes apply from the next
 step, no restart. Back up `vault.key` with the database — without it, saved passwords
 can't be decrypted. The daemon listens on `127.0.0.1:8787`; set `GROKKED_PORT` in the env file
 to change it.
+
+### Local and direct model connections
+
+In **Settings → Models**, save a local API base URL (for example
+`http://localhost:11434/v1` for Ollama or `http://localhost:1234/v1` for LM Studio),
+or an OpenAI API key. The daemon connects to your existing server; it does not start
+one or change any ports. `localhost` means the machine running the daemon.
+Local keys are optional. Keys are saved in the owner-only env file and are never
+returned by the settings API. Environment keys: `OPENAI_API_KEY`, `LOCAL_API_KEY`.
+
+Each model picker has a provider selector and accepts an exact model ID if discovery
+is unavailable. Local IDs are stored as `local::MODEL_ID`, direct OpenAI IDs as
+`openai::MODEL_ID`; existing OpenRouter IDs stay unchanged. Set both Worker and Titles
+if you want to run without OpenRouter. First-run setup also accepts local/OpenAI connections.
+Local and OpenAI model lists do not certify tool or image support: choose models
+that support tools, and for the optional Image model, images too. A blank Image model
+uses each bot's worker; otherwise steps containing images use the Image model, with
+normal tool access. Existing image-model choices are preserved on upgrade.
+
+**Settings → Usage** shows all recorded calls by agent, provider, model and role.
+Costs come from the response, not a price estimate. Calls with no reported cost or
+token counts are marked as unpriced or missing counts; unpriced calls do not count
+toward dollar caps. Step and time limits still apply. Historical worker records are
+attributed to their bots; title usage starts being recorded with this version.
+Direct Anthropic API keys are not supported yet; Anthropic models remain available
+through OpenRouter.
 
 ## Why Linux is the right host for this
 
