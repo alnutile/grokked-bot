@@ -5,7 +5,7 @@
 # Grokked Bot
 
 **Your open-source bot harness: an AI teammate that runs on your own computer, Mac or Linux.** Powered by
-[OpenRouter](https://openrouter.ai), so you pick the model. Inspired by Grok Bot and
+[OpenRouter](https://openrouter.ai), direct OpenAI, or your local OpenAI-compatible server, so you pick the model. Inspired by Grok Bot and
 Claude Cowork — the difference is that the "computer" your agent works on is a container
 on hardware you already own, not a cloud VM you rent.
 
@@ -27,8 +27,8 @@ You need three things, and the app walks you through all of them:
 - **Docker** running ([Docker Desktop](https://www.docker.com/products/docker-desktop/)
   or OrbStack on a Mac, [Docker Engine](https://docs.docker.com/engine/install/) on Linux).
   Each bot's computer is a container.
-- **An [OpenRouter](https://openrouter.ai/keys) key** with a few dollars of credit. A
-  typical task costs cents.
+- **A model connection:** an [OpenRouter](https://openrouter.ai/keys) or OpenAI API key,
+  or an existing local OpenAI-compatible server with a tool-capable model.
 - About **5 GB** of disk for the bot's computer, downloaded once.
 
 Then pick how you want to run it:
@@ -161,7 +161,7 @@ Tested on Ubuntu with Node 24. Nothing below needs root except installing system
 | **Rust** | [rustup.rs](https://rustup.rs) — for the Tauri desktop app |
 | **Tauri's system libs** | `sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev` |
 | **Rootless Docker** | [docs.docker.com/engine/security/rootless](https://docs.docker.com/engine/security/rootless/) |
-| **An OpenRouter key** | [openrouter.ai/keys](https://openrouter.ai/keys), with a few dollars of credit |
+| **A model connection** | An OpenRouter or OpenAI API key, or an existing local OpenAI-compatible server |
 
 Then set up rootless Docker and let your user services outlive your login:
 
@@ -186,13 +186,18 @@ export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock
 docker build -t grokked/computer:0.1 container/     # ~5GB, takes a few minutes
 ```
 
-### 3. Add your OpenRouter key
+### 3. Configure a model connection
+
+For OpenRouter:
 
 ```bash
 mkdir -p ~/.config/grokked
 printf 'OPENROUTER_API_KEY=sk-or-...\n' > ~/.config/grokked/env
 chmod 600 ~/.config/grokked/env
 ```
+
+For local or direct OpenAI, skip the key above and configure the connection in the
+app's first-run setup. See [Local and direct model connections](#local-and-direct-model-connections).
 
 ### 4. Install the daemon
 
@@ -444,7 +449,7 @@ Tauri app  ──HTTP/WS──▶  daemon (systemd --user)  ──Docker API─�
  noVNC ──────────────────────────────────────────────────────────▶ the bot's screen
 ```
 
-The agent loop lives in the **daemon**, never in the container: your OpenRouter key stays
+The agent loop lives in the **daemon**, never in the container: your provider keys stay
 out of the zone where untrusted web pages are read, models swap without rebuilding a 5GB
 image, and transcripts stay on the host. The container is a replaceable "computer" behind
 a typed action API — which is also what makes moving the daemon to an always-on box later
